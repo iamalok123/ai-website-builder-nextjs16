@@ -278,7 +278,7 @@ function HoleBackground({
     });
   }, [initParticle]);
 
-  const tick = React.useCallback(() => {
+  const tick = React.useCallback(function tickFunc() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -292,7 +292,7 @@ function HoleBackground({
     drawLines(ctx);
     drawParticles(ctx);
     ctx.restore();
-    animationFrameIdRef.current = requestAnimationFrame(tick);
+    animationFrameIdRef.current = requestAnimationFrame(tickFunc);
   }, [moveDiscs, moveParticles, drawDiscs, drawLines, drawParticles]);
 
   const init = React.useCallback(() => {
