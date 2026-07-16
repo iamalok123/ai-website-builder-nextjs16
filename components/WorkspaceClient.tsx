@@ -43,6 +43,8 @@ function parseMessages(raw: unknown): Message[] {
     );
 }
 
+
+
 function parseFileData(raw: unknown): FileData | null {
     if (!raw || typeof raw !== "object") return null;
     const f = raw as Record<string, unknown>;
@@ -108,6 +110,7 @@ export function WorkspaceClient({
             { label, status: "running" as const },
         ]);
     };
+
 
     const completeSteps = () => {
         setStatusLog((prev) =>
@@ -176,14 +179,26 @@ export function WorkspaceClient({
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split("\n\n");
                     buffer = lines.pop() ?? "";
+                    // Example buffer after a few chunks might look like:
+                    //   "data: {...}\n\ndata: {...}\n\ndata: {inc"
+                    // After split:
+                    //   ["data: {...}", "data: {...}", "data: {inc"]
+
 
                     for (const line of lines) {
                         if (!line.startsWith("data: ")) continue;
                         try {
+                            // Strip the "data: " prefix (6 characters) and parse the JSON Payload
                             const event = JSON.parse(line.slice(6));
+
+
                             if (event.type === "status") {
+                                // Gemini thought label – adds a new step to the status log
+                                // e.g. "Designing layout...", "Adding interactivity..."
                                 pushStep(event.message);
-                            } else if (event.type === "done") {
+                            } 
+                            
+                            else if (event.type === "done") {
                                 completeSteps();
                                 setWorkspaceId(event.workspaceId);
                                 setFileData(event.fileData);
