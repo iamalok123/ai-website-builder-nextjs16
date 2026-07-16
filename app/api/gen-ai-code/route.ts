@@ -4,7 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 import { db } from "@/lib/prisma";
 import { CREDIT_COST_PER_GENERATION } from "@/lib/constants";
 import type { Message, FileData } from "@/types/workspace";
-// import { aj } from "@/lib/arcjet";
+import { aj } from "@/lib/arcjet";
 
 
 
@@ -164,26 +164,25 @@ export async function POST(req: NextRequest) {
     // ── Arcjet: rate limit, prompt injection, sensitive info ──────────────────
     // detectPromptInjectionMessage requires the actual user text to inspect.
 
-    // const arcjetReq = new Request(request.url, {
-    //   method: request.method,
-    //   headers: request.headers,
-    //   body: JSON.stringify(body),
-    // });
+    const arcjetReq = new Request(req.url, {
+        method: req.method,
+        headers: req.headers,
+        body: JSON.stringify(body),
+    });
 
-    // const lastUserMessage =
-    //   [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
-    // const decision = await aj.protect(arcjetReq, {
-    //   requested: 1,
-    //   userId: clerkId,
-    //   detectPromptInjectionMessage: lastUserMessage,
-    // });
+    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+    const decision = await aj.protect(arcjetReq, {
+        requested: 1,
+        userId: clerkId,
+        detectPromptInjectionMessage: lastUserMessage,
+    });
 
-    // if (decision.isDenied()) {
-    //   return Response.json(
-    //     { message: decision.reason?.type ?? "Request blocked" },
-    //     { status: 429 }
-    //   );
-    // }
+    if (decision.isDenied()) {
+        return Response.json(
+            { message: decision.reason?.type ?? "Request blocked" },
+            { status: 429 }
+        );
+    }
 
 
 
