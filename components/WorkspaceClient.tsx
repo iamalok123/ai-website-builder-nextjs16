@@ -232,7 +232,9 @@ export function WorkspaceClient({
                                 `/workspace?id=${event.workspaceId}`
                             );
                         } else if (event.type === "error") {
-                            throw new Error(event.message);
+                            toast.error(event.message);
+                            setMessages((prev) => prev.slice(0, -1));
+                            return;
                         }
                     }
                 }
@@ -362,7 +364,9 @@ export function WorkspaceClient({
                                 return updated;
                             });
                         } else if (event.type === "error") {
-                            throw new Error(event.message);
+                            toast.error(event.message);
+                            setMessages((prev) => prev.slice(0, -2));
+                            return;
                         }
                     }
                 }
