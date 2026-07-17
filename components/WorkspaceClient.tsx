@@ -12,6 +12,7 @@ import type {
     StatusStep,
     WorkspaceData,
 } from "@/types/workspace";
+import { updateWorkspaceFileData } from "@/actions/workspace";
 
 
 
@@ -100,6 +101,24 @@ export function WorkspaceClient({
         fileDataRef.current = fileData;
     }, [fileData]);
 
+    // Auto-save manual edits to the database
+    useEffect(() => {
+        // If there's no workspaceId, it hasn't been created yet (first prompt pending).
+        if (!workspaceId || !fileData) return;
+        
+        // Skip auto-saving if AI is currently streaming, because the backend
+        // route itself handles saving the final result.
+        if (isGenerating || isImproving) return;
+
+        const timeout = setTimeout(() => {
+            updateWorkspaceFileData(workspaceId, userId, fileData).catch((err) => {
+                console.error("Auto-save failed:", err);
+            });
+        }, 3000); // 3 seconds of inactivity
+
+        return () => clearTimeout(timeout);
+    }, [fileData, workspaceId, userId, isGenerating, isImproving]);
+
 
 
     const pushStep = (label: string) => {
@@ -187,36 +206,33 @@ export function WorkspaceClient({
 
                     for (const line of lines) {
                         if (!line.startsWith("data: ")) continue;
+                        let event;
                         try {
-                            // Strip the "data: " prefix (6 characters) and parse the JSON Payload
-                            const event = JSON.parse(line.slice(6));
-
-
-                            if (event.type === "status") {
-                                // Gemini thought label – adds a new step to the status log
-                                // e.g. "Designing layout...", "Adding interactivity..."
-                                pushStep(event.message);
-                            } 
-                            
-                            else if (event.type === "done") {
-                                completeSteps();
-                                setWorkspaceId(event.workspaceId);
-                                setFileData(event.fileData);
-                                setCredits(event.creditsRemaining);
-                                setMessages((prev) => [
-                                    ...prev,
-                                    { role: "assistant", content: event.assistantMessage },
-                                ]);
-                                window.history.replaceState(
-                                    null,
-                                    "",
-                                    `/workspace?id=${event.workspaceId}`
-                                );
-                            } else if (event.type === "error") {
-                                throw new Error(event.message);
-                            }
+                            event = JSON.parse(line.slice(6));
                         } catch {
-                            // skip malformed SSE lines
+                            continue; // skip malformed SSE lines
+                        }
+
+                        if (event.type === "status") {
+                            // Gemini thought label – adds a new step to the status log
+                            // e.g. "Designing layout...", "Adding interactivity..."
+                            pushStep(event.message);
+                        } else if (event.type === "done") {
+                            completeSteps();
+                            setWorkspaceId(event.workspaceId);
+                            setFileData(event.fileData);
+                            setCredits(event.creditsRemaining);
+                            setMessages((prev) => [
+                                ...prev,
+                                { role: "assistant", content: event.assistantMessage },
+                            ]);
+                            window.history.replaceState(
+                                null,
+                                "",
+                                `/workspace?id=${event.workspaceId}`
+                            );
+                        } else if (event.type === "error") {
+                            throw new Error(event.message);
                         }
                     }
                 }
@@ -279,7 +295,7 @@ export function WorkspaceClient({
 
                 if (res.status === 403) {
                     toast.error(
-                        "Upgrade to Starter or Pro to use Improve with Forge Agent."
+                        "Upgrade to Starter or Pro to use Improve with Zephyre Agent."
                     );
                     setMessages((prev) => prev.slice(0, -2));
                     return;
@@ -311,41 +327,42 @@ export function WorkspaceClient({
 
                     for (const line of lines) {
                         if (!line.startsWith("data: ")) continue;
+                        let event;
                         try {
-                            const event = JSON.parse(line.slice(6));
-
-                            if (event.type === "thinking") {
-                                // Stream agent reasoning into the placeholder assistant message
-                                accumulatedThinking += event.text;
-                                setMessages((prev) => {
-                                    const updated = [...prev];
-                                    updated[updated.length - 1] = {
-                                        role: "assistant",
-                                        content: accumulatedThinking,
-                                    };
-                                    return updated;
-                                });
-                            } else if (event.type === "file_patch") {
-                                // Accumulate locally — don't touch state yet
-                                localPatches[event.path] = { code: event.code };
-                            } else if (event.type === "done") {
-                                // Apply all patches at once now that the stream is complete
-                                setFileData(event.fileData);
-                                setCredits(event.creditsRemaining);
-                                // Replace thinking text with clean summary
-                                setMessages((prev) => {
-                                    const updated = [...prev];
-                                    updated[updated.length - 1] = {
-                                        role: "assistant",
-                                        content: event.summary,
-                                    };
-                                    return updated;
-                                });
-                            } else if (event.type === "error") {
-                                throw new Error(event.message);
-                            }
+                            event = JSON.parse(line.slice(6));
                         } catch {
-                            // skip malformed SSE lines
+                            continue; // skip malformed SSE lines
+                        }
+
+                        if (event.type === "thinking") {
+                            // Stream agent reasoning into the placeholder assistant message
+                            accumulatedThinking += event.text;
+                            setMessages((prev) => {
+                                const updated = [...prev];
+                                updated[updated.length - 1] = {
+                                    role: "assistant",
+                                    content: accumulatedThinking,
+                                };
+                                return updated;
+                            });
+                        } else if (event.type === "file_patch") {
+                            // Accumulate locally — don't touch state yet
+                            localPatches[event.path] = { code: event.code };
+                        } else if (event.type === "done") {
+                            // Apply all patches at once now that the stream is complete
+                            setFileData(event.fileData);
+                            setCredits(event.creditsRemaining);
+                            // Replace thinking text with clean summary
+                            setMessages((prev) => {
+                                const updated = [...prev];
+                                updated[updated.length - 1] = {
+                                    role: "assistant",
+                                    content: event.summary,
+                                };
+                                return updated;
+                            });
+                        } else if (event.type === "error") {
+                            throw new Error(event.message);
                         }
                     }
                 }
@@ -374,7 +391,21 @@ export function WorkspaceClient({
     }, []);
 
     const handleFilePatch = useCallback((patches: FileData) => {
-        setFileData(patches);
+        setFileData((prev) => {
+            if (!prev) return patches;
+            return {
+                ...prev,
+                ...patches,
+                files: {
+                    ...prev.files,
+                    ...(patches.files || {}),
+                },
+                dependencies: {
+                    ...prev.dependencies,
+                    ...(patches.dependencies || {}),
+                }
+            };
+        });
     }, []);
 
 
@@ -410,7 +441,7 @@ export function WorkspaceClient({
                     onImprove={handleImprove}
                     onFixError={(error) =>
                         handleGenerate(
-                            `There is an error in the preview:\n\n\`\`\`\n${error}\n\`\`\`\n\nPlease fix it.`
+                            `There is a syntax or runtime error in the preview:\n\n\`\`\`\n${error}\n\`\`\`\n\nPlease fix this exact error. CRITICAL RULES:\n1. Only change the specific lines causing the error.\n2. When using variables in className, format them EXACTLY like this: className={\`my-class \${variable}\`}. Do not use regular quotes, and do not accidentally type \`}\`}> or similar typos at the end.\n3. Do not accidentally split string literals across multiple lines.\n4. Return the full corrected file.`
                         )
                     }
                     onFilePatch={handleFilePatch}

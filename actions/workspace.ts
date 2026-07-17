@@ -3,7 +3,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/prisma";
-import type { WorkspaceUser, WorkspaceData } from "@/types/workspace";
+import type { WorkspaceUser, WorkspaceData, FileData } from "@/types/workspace";
 
 
 export type { WorkspaceUser, WorkspaceData } from "@/types/workspace";
@@ -51,4 +51,36 @@ export async function getWorkspaceById(
     if (!workspace) redirect("/");
 
     return workspace;
+}
+
+
+
+
+
+
+// ─── Update workspace file data directly ──────────────────────────────────────
+
+export async function updateWorkspaceFileData(
+    workspaceId: string,
+    userId: string,
+    fileData: FileData
+): Promise<void> {
+    const { userId: clerkId } = await auth();
+    if (!clerkId) return; // Must be authenticated
+
+    // Verify the caller owns this workspace via their Clerk ID
+    const user = await db.user.findUnique({
+        where: { clerkId },
+        select: { id: true },
+    });
+    if (!user || user.id !== userId) return;
+
+    try {
+        await db.workspace.update({
+            where: { id: workspaceId, userId },
+            data: { fileData: fileData as any },
+        });
+    } catch (e) {
+        console.error("Failed to update workspace file data:", e);
+    }
 }

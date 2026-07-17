@@ -1,5 +1,3 @@
-"use client"
-
 // CodePanel.tsx
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
@@ -123,6 +121,7 @@ function SandpackInner({
     appTitle,
     isImproving,
     isProUser,
+    onFilePatch,
 }: {
     isGenerating: boolean;
     statusLog: StatusStep[];
@@ -134,6 +133,7 @@ function SandpackInner({
     appTitle: string | null;
     isImproving: boolean;
     isProUser: boolean;
+    onFilePatch: (patches: FileData) => void;
 }) {
     const { sandpack, listen } = useSandpack();
     const [previewError, setPreviewError] = useState<string | null>(null);
@@ -158,6 +158,26 @@ function SandpackInner({
         prevFilesRef.current = fileData.files;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fileData?.files]);
+
+    // Sync manual user edits in Sandpack back to the main fileData state
+    // We debounce this by 1 second so it doesn't cause lag while typing
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            const currentSandpackFiles = sandpack.files;
+            let hasChanges = false;
+            for (const [path, fileObj] of Object.entries(currentSandpackFiles)) {
+                if (prevFilesRef.current[path]?.code !== fileObj.code) {
+                    hasChanges = true;
+                    prevFilesRef.current[path] = { code: fileObj.code };
+                }
+            }
+            if (hasChanges) {
+                onFilePatch({ files: currentSandpackFiles as any } as any);
+            }
+        }, 1000);
+
+        return () => clearTimeout(timeout);
+    }, [sandpack.files, onFilePatch]);
 
     // Listen for Sandpack runtime errors
     useEffect(() => {
@@ -219,7 +239,7 @@ function SandpackInner({
             const zip = new JSZip();
 
             const packageJson = {
-                name: "forge-app",
+                name: "zephyre-app",
                 version: "1.0.0",
                 private: true,
                 dependencies: {
@@ -246,7 +266,7 @@ function SandpackInner({
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Forge App</title>
+    <title>Zephyre App</title>
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
   <body>
@@ -278,7 +298,7 @@ root.render(<React.StrictMode><App /></React.StrictMode>);`
 
             zip.file(
                 "README.md",
-                `# Forge App\n\nGenerated with [Forge](https://forge.app).\n\n## Getting started\n\n\`\`\`bash\nnpm install\nnpm start\n\`\`\``
+                "# Zephyre App\n\nGenerated with [Zephyre](https://zephyre.app).\n\n## Getting started\n\n\`\`\`bash\nnpm install\nnpm start\n\`\`\`"
             );
 
             const blob = await zip.generateAsync({ type: "blob" });
@@ -290,7 +310,7 @@ root.render(<React.StrictMode><App /></React.StrictMode>);`
                     .toLowerCase()
                     .replace(/[^a-z0-9]+/g, "-")
                     .replace(/^-|-$/g, "")}.zip`
-                : "forge-app.zip";
+                : "zephyre-app.zip";
             a.download = zipName;
             a.click();
             URL.revokeObjectURL(url);
@@ -421,7 +441,7 @@ root.render(<React.StrictMode><App /></React.StrictMode>);`
                         <RingLoader color="#60a5fa" size={64} speedMultiplier={0.8} />
                         <div className="flex flex-col items-center gap-1.5">
                             <p className="text-sm font-medium text-white/60">
-                                {isImproving ? "Improving with Cline AI…" : currentStepLabel}
+                                {isImproving ? "Improving with Zephyre AI…" : currentStepLabel}
                             </p>
                             <p className="text-xs text-white/20">
                                 This usually takes 10–20 seconds
@@ -473,7 +493,6 @@ root.render(<React.StrictMode><App /></React.StrictMode>);`
                             showLineNumbers
                             showInlineErrors
                             closableTabs
-                            readOnly
                         />
                     </TabsContent>
 
@@ -529,7 +548,7 @@ export function CodePanel({
     statusLog,
     onImprove,
     onFixError,
-    onFilePatch: _onFilePatch,
+    onFilePatch,
     appTitle,
     isImproving,
     isProUser,
@@ -576,6 +595,7 @@ export function CodePanel({
                     appTitle={appTitle}
                     isImproving={isImproving}
                     isProUser={isProUser}
+                    onFilePatch={onFilePatch}
                 />
             </SandpackProvider>
         </div>

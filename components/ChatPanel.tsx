@@ -19,6 +19,7 @@ import type { Message, StatusStep } from "@/types/workspace";
 import { createClient } from "@supabase/supabase-js";
 import { BlueTitle } from "./reusables";
 import Image from "next/image";
+import { toast } from "sonner";
 
 
 
@@ -117,17 +118,23 @@ export function ChatPanel({
         setIsUploading(true);
         try {
             const ext = file.name.split(".").pop();
+            // Path: userId/workspaceId/timestamp.ext
+            // workspaceId may be "new" before first generation
             const path = `${userId}/${workspaceId ?? "new"}/${Date.now()}.${ext}`;
             const { error } = await supabase.storage
                 .from("workspace-images")
                 .upload(path, file, { upsert: true });
+
             if (error) throw error;
+
             const { data } = supabase.storage
                 .from("workspace-images")
                 .getPublicUrl(path);
+
             setPendingImageUrl(data.publicUrl);
-        } catch {
-            // silent
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            toast.error(message)
         } finally {
             setIsUploading(false);
             if (fileRef.current) fileRef.current.value = "";
@@ -179,84 +186,84 @@ export function ChatPanel({
 
                         return (
                             <div key={i}>
-                                {msg.role === "user" ? 
+                                {msg.role === "user" ?
 
-                                // User Chat Interface
-                                (
-                                    <div className="flex items-start justify-end gap-2">
-                                        <div className="max-w-[85%] space-y-1.5">
-                                            {msg.imageUrl && (
-                                                // eslint-disable-next-line @next/next/no-img-element
-                                                <img
-                                                    src={msg.imageUrl}
-                                                    alt="uploaded"
-                                                    className="max-h-40 w-full rounded-lg object-cover"
-                                                />
-                                            )}
-                                            <div className="rounded-2xl rounded-br-sm bg-white/10 px-3.5 py-2.5">
-                                                <p className="text-[13px] leading-relaxed text-white/80 wrap-break-word">
-                                                    {msg.content}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        {user?.imageUrl ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img
-                                                src={user.imageUrl}
-                                                alt={user.fullName ?? "You"}
-                                                className="mt-0.5 h-6 w-6 shrink-0 rounded-full"
-                                            />
-                                        ) : (
-                                            <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] font-semibold text-white/50">
-                                                {user?.firstName?.[0] ?? "U"}
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : 
-                                
-                                // AI Chat Interface
-                                (
-                                    <div className="flex items-start gap-2">
-                                        <Image
-                                            src="/logo-short.jpeg"
-                                            alt="Forge"
-                                            width={24}
-                                            height={24}
-                                            className="mt-0.5 h-6 w-6 shrink-0 rounded-md"
-                                        />
-                                        <div className="min-w-0 rounded-2xl rounded-tl-sm bg-white/5 px-3.5 py-2.5">
-                                            {isLiveStream && !msg.content ? (
-                                                // Empty placeholder — show Cline thinking indicator
-                                                <div className="flex items-center gap-2">
-                                                    <Wand2 className="h-3 w-3 shrink-0 text-blue-400/60 animate-pulse" />
-                                                    <span className="text-[12px] text-white/30 animate-pulse">
-                                                        Cline is thinking…
-                                                    </span>
-                                                </div>
-                                            ) : isLiveStream && msg.content ? (
-                                                // Streaming thinking text — show raw (not markdown)
-                                                // with a blinking cursor at the end
-                                                <div>
-                                                    <div className="mb-1.5 flex items-center gap-1.5">
-                                                        <Wand2 className="h-3 w-3 shrink-0 text-blue-400/60" />
-                                                        <span className="text-[10px] font-medium uppercase tracking-wider text-blue-400/50">
-                                                            Agent reasoning
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-[12px] leading-relaxed text-white/35 wrap-break-word">
+                                    // User Chat Interface
+                                    (
+                                        <div className="flex items-start justify-end gap-2">
+                                            <div className="max-w-[85%] space-y-1.5">
+                                                {msg.imageUrl && (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img
+                                                        src={msg.imageUrl}
+                                                        alt="uploaded"
+                                                        className="max-h-40 w-full rounded-lg object-cover"
+                                                    />
+                                                )}
+                                                <div className="rounded-2xl rounded-br-sm bg-white/10 px-3.5 py-2.5">
+                                                    <p className="text-[13px] leading-relaxed text-white/80 wrap-break-word">
                                                         {msg.content}
-                                                        <span className="ml-0.5 inline-block h-3 w-0.5 animate-[blink_1s_ease-in-out_infinite] bg-blue-400/60 align-middle" />
                                                     </p>
                                                 </div>
+                                            </div>
+                                            {user?.imageUrl ? (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img
+                                                    src={user.imageUrl}
+                                                    alt={user.fullName ?? "You"}
+                                                    className="mt-0.5 h-6 w-6 shrink-0 rounded-full"
+                                                />
                                             ) : (
-                                                // Normal completed assistant message
-                                                <div className="prose prose-sm prose-invert max-w-none wrap-break-word text-[13px] leading-relaxed text-white/70 [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-blue-300/80 [&_code]:text-xs [&_code]:break-all [&_li]:my-0.5 [&_p]:my-1 [&_pre]:overflow-x-auto! [&_pre]:whitespace-pre-wrap! [&_ul]:my-1">
-                                                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] font-semibold text-white/50">
+                                                    {user?.firstName?.[0] ?? "U"}
                                                 </div>
                                             )}
                                         </div>
-                                    </div>
-                                )}
+                                    ) :
+
+                                    // AI Chat Interface
+                                    (
+                                        <div className="flex items-start gap-2">
+                                            <Image
+                                                src="/logo-short.jpeg"
+                                                alt="Zephyre"
+                                                width={24}
+                                                height={24}
+                                                className="mt-0.5 h-6 w-6 shrink-0 rounded-md"
+                                            />
+                                            <div className="min-w-0 rounded-2xl rounded-tl-sm bg-white/5 px-3.5 py-2.5">
+                                                {isLiveStream && !msg.content ? (
+                                                    // Empty placeholder — show Zephyre thinking indicator
+                                                    <div className="flex items-center gap-2">
+                                                        <Wand2 className="h-3 w-3 shrink-0 text-blue-400/60 animate-pulse" />
+                                                        <span className="text-[12px] text-white/30 animate-pulse">
+                                                            Zephyre is thinking…
+                                                        </span>
+                                                    </div>
+                                                ) : isLiveStream && msg.content ? (
+                                                    // Streaming thinking text — show raw (not markdown)
+                                                    // with a blinking cursor at the end
+                                                    <div>
+                                                        <div className="mb-1.5 flex items-center gap-1.5">
+                                                            <Wand2 className="h-3 w-3 shrink-0 text-blue-400/60" />
+                                                            <span className="text-[10px] font-medium uppercase tracking-wider text-blue-400/50">
+                                                                Agent reasoning
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[12px] leading-relaxed text-white/35 wrap-break-word">
+                                                            {msg.content}
+                                                            <span className="ml-0.5 inline-block h-3 w-0.5 animate-[blink_1s_ease-in-out_infinite] bg-blue-400/60 align-middle" />
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    // Normal completed assistant message
+                                                    <div className="prose prose-sm prose-invert max-w-none wrap-break-word text-[13px] leading-relaxed text-white/70 [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-blue-300/80 [&_code]:text-xs [&_code]:break-all [&_li]:my-0.5 [&_p]:my-1 [&_pre]:overflow-x-auto! [&_pre]:whitespace-pre-wrap! [&_ul]:my-1">
+                                                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                             </div>
                         );
                     })}
@@ -351,7 +358,7 @@ export function ChatPanel({
 
 
 
-                {/* Text Input Field */} 
+                {/* Text Input Field */}
                 <div
                     className={cn(
                         "rounded-xl border bg-white/4 transition-colors",
@@ -372,7 +379,7 @@ export function ChatPanel({
                             noCredits
                                 ? "Upgrade to keep building…"
                                 : isImproving
-                                    ? "Cline is improving your app…"
+                                    ? "Zephyre is improving your app…"
                                     : isGenerating
                                         ? "Generating…"
                                         : "Ask AI to modify…"

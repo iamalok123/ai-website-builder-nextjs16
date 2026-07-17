@@ -96,9 +96,11 @@ RULES:
 5. The entry point must always be /App.js and must export a default component.
 6. All imports must reference files you include in "files" or packages in "dependencies".
 7. Do not include react, react-dom, or tailwindcss in "dependencies" — they are always available.
-8. When modifying existing code, include ALL files (both changed and unchanged) in "files".
+8. When modifying existing code, ONLY include the files you have changed in the "files" object. Do not return untouched files.
 9. Keep code clean, readable, and production-quality.
-10. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.`;
+10. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.
+11. CRITICAL TAILWIND FIX: If you need dynamic class names with template literals, use EXACTLY this syntax: className={\`my-class \${variable}\`}. Do NOT use regular quotes. DO NOT accidentally add extra braces or brackets at the end like \`}\`}> or \`} />. This causes fatal syntax errors.
+12. CRITICAL: Double-check all React code for syntax errors before responding. DO NOT split string literals or class names across multiple lines. Ensure all JSX template literals (className={\`...\`}) are perfectly formatted with matching brackets and backticks.`;
 
 
 
@@ -106,34 +108,51 @@ RULES:
 
 // ─── Gemini contents builder ──────────────────────────────────────────────────
 
-function buildContents(messages: Message[], fileData: FileData | null) {
+async function buildContents(messages: Message[], fileData: FileData | null) {
     const trimmed = trimHistory(messages);
 
-    return trimmed.map((msg, idx) => {
-        const role = msg.role === "assistant" ? "model" : "user";
+    return Promise.all(
+        trimmed.map(async (msg, idx) => {
+            const role = msg.role === "assistant" ? "model" : "user";
 
-        if (msg.role === "user") {
-            const parts: object[] = [];
+            if (msg.role === "user") {
+                const parts: object[] = [];
+                let text = msg.content;
 
-            let text = msg.content;
+                if (msg.imageUrl) {
+                    text = `[The user has attached an image. Use this URL directly in the generated app where relevant (as img src, background-image, etc.): ${msg.imageUrl}]\n\n${text}`;
+                    try {
+                        const imgRes = await fetch(msg.imageUrl);
+                        if (imgRes.ok) {
+                            const arrayBuffer = await imgRes.arrayBuffer();
+                            const base64Data = Buffer.from(arrayBuffer).toString("base64");
+                            const mimeType = imgRes.headers.get("content-type") || "image/jpeg";
+                            parts.push({
+                                inlineData: {
+                                    data: base64Data,
+                                    mimeType,
+                                },
+                            });
+                        }
+                    } catch (error) {
+                        console.error("Failed to fetch image for Gemini:", error);
+                    }
+                }
 
-            if (msg.imageUrl) {
-                text = `[The user has attached an image. Use this URL directly in the generated app where relevant (as img src, background-image, etc.): ${msg.imageUrl}]\n\n${text}`;
+                const isLast = idx === trimmed.length - 1;
+                if (isLast && fileData) {
+                    text +=
+                        "\n\nCurrent project files for context:\n" +
+                        JSON.stringify(fileData, null, 2);
+                }
+
+                parts.push({ text });
+                return { role, parts };
             }
 
-            const isLast = idx === trimmed.length - 1;
-            if (isLast && fileData) {
-                text +=
-                    "\n\nCurrent project files for context:\n" +
-                    JSON.stringify(fileData, null, 2);
-            }
-
-            parts.push({ text });
-            return { role, parts };
-        }
-
-        return { role, parts: [{ text: msg.content }] };
-    });
+            return { role, parts: [{ text: msg.content }] };
+        })
+    );
 }
 
 
@@ -175,6 +194,7 @@ export async function POST(req: NextRequest) {
         requested: 1,
         userId: clerkId,
         detectPromptInjectionMessage: lastUserMessage,
+        sensitiveInfoValue: lastUserMessage,
     });
 
     if (decision.isDenied()) {
@@ -204,11 +224,26 @@ export async function POST(req: NextRequest) {
 
     const stream = new ReadableStream({
         async start(controller) {
-            const enqueue = (chunk: string) =>
-                controller.enqueue(encoder.encode(chunk));
+            let isClosed = false;
+            const enqueue = (chunk: string) => {
+                if (isClosed) return;
+                try {
+                    controller.enqueue(encoder.encode(chunk));
+                } catch (e) {
+                    isClosed = true;
+                    throw e;
+                }
+            };
+            const closeStream = () => {
+                if (isClosed) return;
+                isClosed = true;
+                try {
+                    controller.close();
+                } catch {}
+            };
 
             try {
-                const contents = buildContents(messages, fileData);
+                const contents = await buildContents(messages, fileData);
 
                 const geminiStream = await ai.models.generateContentStream({
                     model: "gemini-3.5-flash",
@@ -270,15 +305,22 @@ export async function POST(req: NextRequest) {
                     dependencies: Record<string, string>;
                 };
 
+                let cleanJson = accumulated.trim();
+                const firstBrace = cleanJson.indexOf('{');
+                const lastBrace = cleanJson.lastIndexOf('}');
+                if (firstBrace !== -1 && lastBrace !== -1) {
+                    cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
+                }
+
                 try {
-                    parsed = JSON.parse(accumulated);
+                    parsed = JSON.parse(cleanJson);
                 } catch {
                     enqueue(
                         sseEvent("error", {
                             message: "AI returned invalid JSON. Please try again.",
                         })
                     );
-                    controller.close();
+                    closeStream();
                     return;
                 }
 
@@ -295,7 +337,7 @@ export async function POST(req: NextRequest) {
                             message: "AI response missing files. Please try again.",
                         })
                     );
-                    controller.close();
+                    closeStream();
                     return;
                 }
 
@@ -310,9 +352,15 @@ export async function POST(req: NextRequest) {
                 enqueue(sseEvent("status", { message: "Validating packages…" }));
                 const validatedDeps = await validateDependencies(dependencies ?? {});
                 const newFileData: FileData = {
-                    files,
-                    dependencies: validatedDeps,
-                    title: aiTitle,
+                    files: {
+                        ...(fileData?.files || {}),
+                        ...files,
+                    },
+                    dependencies: {
+                        ...(fileData?.dependencies || {}),
+                        ...validatedDeps,
+                    },
+                    title: aiTitle || fileData?.title || "Zephyre App",
                 };
 
 
@@ -354,7 +402,10 @@ export async function POST(req: NextRequest) {
                         where: { id: userId },
                         data: { credits: { decrement: CREDIT_COST_PER_GENERATION } },
                     }),
-                ]);
+                ], {
+                    maxWait: 15000, // 15 seconds max wait to connect
+                    timeout: 20000, // 20 seconds max for transaction to run
+                });
 
 
 
@@ -380,16 +431,28 @@ export async function POST(req: NextRequest) {
                             updatedUser?.credits ?? user.credits - CREDIT_COST_PER_GENERATION,
                     })
                 );
-            } catch (err) {
+            } catch (err: any) {
                 console.error("[gen-ai-code] stream error:", err);
+                
+                let errorMessage = "Something went wrong. Please try again.";
+                
+                // Parse specific API errors so the user knows what actually happened
+                if (err?.status === 429 || err?.message?.includes("429") || err?.message?.includes("quota")) {
+                    errorMessage = "You have exceeded your Gemini API rate limit (Free Tier). Please wait 60 seconds and try again.";
+                } else if (err?.status === 503 || err?.message?.includes("503")) {
+                    errorMessage = "The Gemini AI servers are currently experiencing high demand. Please try again in a few moments.";
+                } else if (err?.code === "ECONNRESET" || err?.cause?.code === "ECONNRESET" || err?.message?.includes("terminated")) {
+                    errorMessage = "The AI connection was interrupted. This can happen with complex generations. Please try again.";
+                }
+
                 enqueue(
                     sseEvent("error", {
-                        message: "Something went wrong. Please try again.",
+                        message: errorMessage,
                     })
                 );
             } finally {
                 // Always close the stream - whether success, parse error or exception
-                controller.close();
+                closeStream();
             }
         },
     });
@@ -397,7 +460,7 @@ export async function POST(req: NextRequest) {
 
     return new Response(stream, {
         headers: {
-            "Content-Type": "application/json",
+            "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Content-Type-Options": "nosniff",

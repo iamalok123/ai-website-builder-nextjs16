@@ -86,7 +86,7 @@ export default function Home() {
         </Badge>
 
         <h1 className="mx-auto max-w-3xl text-balance font-serif text-5xl leading-tight tracking-tight sm:text-6xl lg:text-7xl z-10">
-          <GrayTitle>Forge your dream</GrayTitle>
+          <GrayTitle>Zephyre your dream</GrayTitle>
           <br />
           <BlueTitle>from a single prompt.</BlueTitle>
         </h1>
@@ -176,7 +176,7 @@ export default function Home() {
             </div>
 
             <div className="mx-auto flex h-6 w-64 items-center justify-center rounded-md bg-white/5 px-3">
-              <span className="text-xs text-white/25">forge.app/workspace</span>
+              <span className="text-xs text-white/25">zephyre.app/workspace</span>
             </div>
           </div>
 
