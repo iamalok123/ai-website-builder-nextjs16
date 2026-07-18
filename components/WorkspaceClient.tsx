@@ -3,7 +3,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { ChatPanel } from "./ChatPanel";
 import { CodePanel } from "./CodePanel";
-// import { MobileBlocker } from "./MobileBlocker";
 import { MIN_CREDITS_TO_GENERATE } from "@/lib/constants";
 import { toast } from "sonner";
 import type {
@@ -433,46 +432,62 @@ export function WorkspaceClient({
     }, []);
 
 
+    const [mobileView, setMobileView] = useState<"chat" | "preview">("chat");
+
+    const toggleMobileView = useCallback(() => {
+        setMobileView((prev) => (prev === "chat" ? "preview" : "chat"));
+    }, []);
+
     return (
         <>
-            {/* Mobile blocker — visible only on small screens */}
-            <div className="md:hidden">
-                {/* <MobileBlocker /> */}
-            </div>
+            {/* Workspace — Responsive layout (stacked on mobile, side-by-side on desktop) */}
+            <div className="relative flex h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-[#0a0a0a]">
+                <div 
+                    className={`absolute inset-0 z-10 flex w-full flex-col transition-transform duration-300 ease-in-out md:relative md:z-auto md:w-[320px] md:translate-x-0 md:flex-col ${
+                        mobileView === "chat" ? "translate-x-0" : "-translate-x-full"
+                    }`}
+                >
+                    <ChatPanel
+                        messages={messages}
+                        isGenerating={isGenerating}
+                        isImproving={isImproving}
+                        statusLog={statusLog}
+                        credits={credits}
+                        initialPrompt={initialPrompt}
+                        onGenerate={handleGenerate}
+                        onStop={handleStop}
+                        userId={userId}
+                        workspaceId={workspaceId}
+                        appTitle={fileData?.title ?? workspace?.title ?? null}
+                        onToggleView={toggleMobileView}
+                    />
+                </div>
+                
+                {/* Desktop vertical divider */}
+                <div className="hidden md:block w-px shrink-0 bg-white/6" />
 
-            {/* Workspace — visible only on md+ screens */}
-            <div className="hidden md:flex h-[calc(100vh-3.5rem)] overflow-hidden bg-[#0a0a0a]">
-                <ChatPanel
-                    isImproving={isImproving}
-                    messages={messages}
-                    isGenerating={isGenerating}
-                    statusLog={statusLog}
-                    credits={credits}
-                    initialPrompt={initialPrompt}
-                    onGenerate={handleGenerate}
-                    onStop={handleStop}
-                    userId={userId}
-                    workspaceId={workspaceId}
-                    appTitle={fileData?.title ?? workspace?.title ?? null}
-                />
-
-                <div className="w-px shrink-0 bg-white/6" />
-
-                <CodePanel
-                    fileData={fileData}
-                    isGenerating={isGenerating}
-                    statusLog={statusLog}
-                    onImprove={handleImprove}
-                    onFixError={(error) =>
-                        handleGenerate(
-                            `There is a syntax or runtime error in the preview:\n\n\`\`\`\n${error}\n\`\`\`\n\nPlease fix this exact error. CRITICAL RULES:\n1. Only change the specific lines causing the error.\n2. When using variables in className, format them EXACTLY like this: className={\`my-class \${variable}\`}. Do not use regular quotes, and do not accidentally type \`}\`}> or similar typos at the end.\n3. Do not accidentally split string literals across multiple lines.\n4. Return the full corrected file.`
-                        )
-                    }
-                    onFilePatch={handleFilePatch}
-                    appTitle={fileData?.title ?? workspace?.title ?? null}
-                    isImproving={isImproving}
-                    isProUser={userPlan === "pro"}
-                />
+                <div 
+                    className={`absolute inset-0 z-10 flex w-full flex-col transition-transform duration-300 ease-in-out md:relative md:z-auto md:flex-1 md:translate-x-0 md:flex-col ${
+                        mobileView === "preview" ? "translate-x-0" : "translate-x-full"
+                    }`}
+                >
+                    <CodePanel
+                        fileData={fileData}
+                        isGenerating={isGenerating}
+                        statusLog={statusLog}
+                        onImprove={handleImprove}
+                        onFixError={(error) =>
+                            handleGenerate(
+                                `There is a syntax or runtime error in the preview:\n\n\`\`\`\n${error}\n\`\`\`\n\nPlease fix this exact error. CRITICAL RULES:\n1. Only change the specific lines causing the error.\n2. When using variables in className, format them EXACTLY like this: className={\`my-class \${variable}\`}. Do not use regular quotes, and do not accidentally type \`}\`}> or similar typos at the end.\n3. Do not accidentally split string literals across multiple lines.\n4. Return the full corrected file.`
+                            )
+                        }
+                        onFilePatch={handleFilePatch}
+                        appTitle={fileData?.title ?? workspace?.title ?? null}
+                        isImproving={isImproving}
+                        isProUser={userPlan === "pro"}
+                        onToggleView={toggleMobileView}
+                    />
+                </div>
             </div>
         </>
     );

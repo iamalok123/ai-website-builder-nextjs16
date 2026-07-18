@@ -10,6 +10,7 @@ import {
     Sparkles,
     Wand2,
     Square,
+    ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -43,6 +44,7 @@ interface ChatPanelProps {
     userId: string;
     workspaceId: string | null;
     appTitle: string | null;
+    onToggleView: () => void;
 }
 
 export function ChatPanel({
@@ -57,6 +59,7 @@ export function ChatPanel({
     userId,
     workspaceId,
     appTitle,
+    onToggleView,
 }: ChatPanelProps) {
     const { user } = useUser();
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -144,24 +147,34 @@ export function ChatPanel({
     const canSubmit = input.trim().length > 0 && !isGenerating && !isImproving && !noCredits;
 
     return (
-        <div className="flex w-[320px] shrink-0 flex-col bg-[#0d0d0d]">
+        <div className="flex h-full w-full shrink-0 flex-col border-b border-white/6 bg-[#0d0d0d] md:border-b-0">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-white/6 px-2 py-3">
                 <BlueTitle>{appTitle}</BlueTitle>
-                <PricingModal reason={noCredits ? "credits" : "upgrade"}>
-                    <span
-                        className={cn(
-                            "rounded-full px-2 py-0.5 text-[11px] transition-colors",
-                            noCredits
-                                ? "bg-red-500/15 text-red-400/80 hover:bg-red-500/25"
-                                : "bg-white/6 text-white/30 hover:bg-white/10 hover:text-white/50"
-                        )}
+                <div className="flex items-center gap-2">
+                    <PricingModal reason={noCredits ? "credits" : "upgrade"}>
+                        <span
+                            className={cn(
+                                "rounded-full px-2 py-0.5 text-[11px] transition-colors",
+                                noCredits
+                                    ? "bg-red-500/15 text-red-400/80 hover:bg-red-500/25"
+                                    : "bg-white/6 text-white/30 hover:bg-white/10 hover:text-white/50"
+                            )}
+                        >
+                            {noCredits
+                                ? "No credits · Upgrade"
+                                : `${credits} credit${credits !== 1 ? "s" : ""}`}
+                        </span>
+                    </PricingModal>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={onToggleView}
+                        className="h-7 w-7 text-white/70 hover:bg-white/10 md:hidden"
                     >
-                        {noCredits
-                            ? "No credits · Upgrade"
-                            : `${credits} credit${credits !== 1 ? "s" : ""}`}
-                    </span>
-                </PricingModal>
+                        <ExternalLink className="h-4 w-4" />
+                    </Button>
+                </div>
             </div>
 
 

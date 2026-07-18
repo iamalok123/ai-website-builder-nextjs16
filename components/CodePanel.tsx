@@ -1,5 +1,3 @@
-// CodePanel.tsx
-/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -20,6 +18,7 @@ import {
     Bot,
     Loader2,
     ArrowUp,
+    MessageSquare,
 } from "lucide-react";
 import { RingLoader } from "react-spinners";
 import JSZip from "jszip";
@@ -98,6 +97,7 @@ interface CodePanelProps {
     appTitle: string | null;
     isImproving: boolean;
     isProUser: boolean;
+    onToggleView: () => void;
 }
 
 
@@ -122,6 +122,7 @@ function SandpackInner({
     isImproving,
     isProUser,
     onFilePatch,
+    onToggleView,
 }: {
     isGenerating: boolean;
     statusLog: StatusStep[];
@@ -134,6 +135,7 @@ function SandpackInner({
     isImproving: boolean;
     isProUser: boolean;
     onFilePatch: (patches: FileData) => void;
+    onToggleView: () => void;
 }) {
     const { sandpack, listen } = useSandpack();
     const [previewError, setPreviewError] = useState<string | null>(null);
@@ -426,7 +428,15 @@ root.render(<React.StrictMode><App /></React.StrictMode>);`
                         ) : (
                             <Download className="h-3.5 w-3.5" />
                         )}
-                        Download
+                        <span className="hidden md:inline ml-1">Download</span>
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={onToggleView}
+                        className="h-7 w-7 shrink-0 text-white/70 hover:bg-white/10 md:hidden"
+                    >
+                        <MessageSquare className="h-4 w-4" />
                     </Button>
                 </div>
             </div>
@@ -552,6 +562,7 @@ export function CodePanel({
     appTitle,
     isImproving,
     isProUser,
+    onToggleView,
 }: CodePanelProps) {
     const [activeTab, setActiveTab] = useState<ActiveTab>("preview");
 
@@ -596,6 +607,7 @@ export function CodePanel({
                     isImproving={isImproving}
                     isProUser={isProUser}
                     onFilePatch={onFilePatch}
+                    onToggleView={onToggleView}
                 />
             </SandpackProvider>
         </div>
