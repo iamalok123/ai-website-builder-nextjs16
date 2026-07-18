@@ -24,7 +24,7 @@ const Header = async () => {
                     />
                 </Link>
 
-                <div className='flex items-center gap-5'>
+                <div className='flex items-center gap-5' suppressHydrationWarning>
                     <Show when="signed-in">
                         <Link
                             href={"/projects"}
@@ -39,7 +39,7 @@ const Header = async () => {
                                     className='inline-flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 text-xs text-white/70 hover:text-white/90 hover:bg-white/10 hover:border-white/30 transition-all duration-200'
                                 >
                                     <Zap className='h-4 w-4 fill-white/70' />
-                                    {user.credits} / {PLANS[user?.plan as Plan].credits } Credits
+                                    {user.credits} / {PLANS[user?.plan as Plan].credits} Credits
                                 </span>
                             </PricingModal>
                         }
@@ -50,12 +50,12 @@ const Header = async () => {
                     <Show when="signed-out">
                         <SignInButton mode="modal">
                             <Button variant="secondary">
-                                Sign In
+                                <span>Sign In</span>
                             </Button>
                         </SignInButton>
                         <SignUpButton mode="modal">
-                            <Button >
-                                Sign Up
+                            <Button>
+                                <span>Sign Up</span>
                             </Button>
                         </SignUpButton>
                     </Show>
