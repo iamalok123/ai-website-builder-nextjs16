@@ -250,7 +250,7 @@ export function ChatPanel({
                                                                 Agent reasoning
                                                             </span>
                                                         </div>
-                                                        <p className="text-[12px] leading-relaxed text-white/35 wrap-break-word">
+                                                        <p className="text-[12px] leading-relaxed text-white/35 wrap-break-word whitespace-pre-wrap">
                                                             {msg.content}
                                                             <span className="ml-0.5 inline-block h-3 w-0.5 animate-[blink_1s_ease-in-out_infinite] bg-blue-400/60 align-middle" />
                                                         </p>

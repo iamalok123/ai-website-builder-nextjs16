@@ -142,6 +142,9 @@ RULES:
 - Keep all existing functionality unless asked to remove it.
 - The entry point is always /App.js with a default export.
 - All imports must reference files you've updated or packages in the available list above.
+- CRITICAL IMPORT RULE: Do not hallucinate imports. If you import icons from \`lucide-react\`, only use standard existing lucide icons. Do not import non-existent components (like \`Stats\`) from libraries.
+- CRITICAL EXPORT RULE: If you create a new component in a file, ensure it is properly exported. If you use a composite component, ensure it is defined in the file or imported correctly.
+- CRITICAL TAILWIND FIX: If you need dynamic class names with template literals, use EXACTLY this syntax: className={\`my-class \${variable}\`}. Do NOT use regular quotes, and do not accidentally type \`}\`}> or similar typos.
 - PRO TIP: If you need to update multiple files, you can call \`update_file\` multiple times in a single turn to save iterations!`,
                 tools: [updateFileTool, doneImprovingTool],
                 // Auto-approve both tools — no human-in-the-loop needed in this context

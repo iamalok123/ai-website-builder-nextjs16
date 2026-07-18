@@ -444,7 +444,7 @@ root.render(<React.StrictMode><App /></React.StrictMode>);`
                                 {isImproving ? "Improving with Zephyre AI…" : currentStepLabel}
                             </p>
                             <p className="text-xs text-white/20">
-                                This usually takes 10–20 seconds
+                                This usually takes 1-2 minutes
                             </p>
                         </div>
                     </div>
