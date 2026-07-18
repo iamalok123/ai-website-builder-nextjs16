@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "@/lib/prisma";
 import { CREDIT_COST_PER_GENERATION } from "@/lib/constants";
 import type { FileData } from "@/types/workspace";
+import { revalidatePath } from "next/cache";
 
 // ─── SSE helper ───────────────────────────────────────────────────────────────
 
@@ -214,6 +215,8 @@ RULES:
                     where: { id: userId },
                     select: { credits: true },
                 });
+
+                revalidatePath("/projects");
 
                 // ── Final done event ──────────────────────────────────────────────
 

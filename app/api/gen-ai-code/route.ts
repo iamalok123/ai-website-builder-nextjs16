@@ -5,6 +5,7 @@ import { db } from "@/lib/prisma";
 import { CREDIT_COST_PER_GENERATION } from "@/lib/constants";
 import type { Message, FileData } from "@/types/workspace";
 import { aj } from "@/lib/arcjet";
+import { revalidatePath } from "next/cache";
 
 
 
@@ -415,6 +416,8 @@ export async function POST(req: NextRequest) {
                     where: { id: userId },
                     select: { credits: true },
                 });
+
+                revalidatePath("/projects");
 
 
 

@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { db } from "@/lib/prisma";
 import type { WorkspaceUser, WorkspaceData, FileData } from "@/types/workspace";
 
@@ -80,6 +81,7 @@ export async function updateWorkspaceFileData(
             where: { id: workspaceId, userId },
             data: { fileData: fileData as any },
         });
+        revalidatePath("/projects");
     } catch (e) {
         console.error("Failed to update workspace file data:", e);
     }

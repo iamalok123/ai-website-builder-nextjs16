@@ -191,52 +191,62 @@ export function WorkspaceClient({
                 const decoder = new TextDecoder();
                 let buffer = "";
 
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
 
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split("\n\n");
-                    buffer = lines.pop() ?? "";
-                    // Example buffer after a few chunks might look like:
-                    //   "data: {...}\n\ndata: {...}\n\ndata: {inc"
-                    // After split:
-                    //   ["data: {...}", "data: {...}", "data: {inc"]
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split("\n\n");
+                        buffer = lines.pop() ?? "";
+                        // Example buffer after a few chunks might look like:
+                        //   "data: {...}\n\ndata: {...}\n\ndata: {inc"
+                        // After split:
+                        //   ["data: {...}", "data: {...}", "data: {inc"]
 
 
-                    for (const line of lines) {
-                        if (!line.startsWith("data: ")) continue;
-                        let event;
-                        try {
-                            event = JSON.parse(line.slice(6));
-                        } catch {
-                            continue; // skip malformed SSE lines
-                        }
+                        for (const line of lines) {
+                            if (!line.startsWith("data: ")) continue;
+                            let event;
+                            try {
+                                event = JSON.parse(line.slice(6));
+                            } catch {
+                                continue; // skip malformed SSE lines
+                            }
 
-                        if (event.type === "status") {
-                            // Gemini thought label – adds a new step to the status log
-                            // e.g. "Designing layout...", "Adding interactivity..."
-                            pushStep(event.message);
-                        } else if (event.type === "done") {
-                            completeSteps();
-                            setWorkspaceId(event.workspaceId);
-                            setFileData(event.fileData);
-                            setCredits(event.creditsRemaining);
-                            setMessages((prev) => [
-                                ...prev,
-                                { role: "assistant", content: event.assistantMessage },
-                            ]);
-                            window.history.replaceState(
-                                null,
-                                "",
-                                `/workspace?id=${event.workspaceId}`
-                            );
-                        } else if (event.type === "error") {
-                            toast.error(event.message);
-                            setMessages((prev) => prev.slice(0, -1));
-                            return;
+                            if (event.type === "status") {
+                                // Gemini thought label – adds a new step to the status log
+                                // e.g. "Designing layout...", "Adding interactivity..."
+                                pushStep(event.message);
+                            } else if (event.type === "done") {
+                                completeSteps();
+                                setWorkspaceId(event.workspaceId);
+                                setFileData(event.fileData);
+                                setCredits(event.creditsRemaining);
+                                setMessages((prev) => [
+                                    ...prev,
+                                    { role: "assistant", content: event.assistantMessage },
+                                ]);
+                                window.history.replaceState(
+                                    null,
+                                    "",
+                                    `/workspace?id=${event.workspaceId}`
+                                );
+                            } else if (event.type === "error") {
+                                toast.error(event.message);
+                                setMessages((prev) => prev.slice(0, -1));
+                                return;
+                            }
                         }
                     }
+                } catch (streamErr) {
+                    if (streamErr instanceof Error && streamErr.name === "AbortError") {
+                        throw streamErr;
+                    }
+                    console.error("Stream reading error:", streamErr);
+                    toast.error("Connection lost, please try again");
+                    setMessages((prev) => prev.slice(0, -1));
+                    return;
                 }
             } catch (err) {
                 // User-initiated stop — silently roll back the user message
@@ -319,56 +329,66 @@ export function WorkspaceClient({
                 // which feeds into SandpackProvider and can cause remounts mid-stream.
                 const localPatches: Record<string, { code: string }> = {};
 
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
 
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split("\n\n");
-                    buffer = lines.pop() ?? "";
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split("\n\n");
+                        buffer = lines.pop() ?? "";
 
-                    for (const line of lines) {
-                        if (!line.startsWith("data: ")) continue;
-                        let event;
-                        try {
-                            event = JSON.parse(line.slice(6));
-                        } catch {
-                            continue; // skip malformed SSE lines
-                        }
+                        for (const line of lines) {
+                            if (!line.startsWith("data: ")) continue;
+                            let event;
+                            try {
+                                event = JSON.parse(line.slice(6));
+                            } catch {
+                                continue; // skip malformed SSE lines
+                            }
 
-                        if (event.type === "thinking") {
-                            // Stream agent reasoning into the placeholder assistant message
-                            accumulatedThinking += event.text;
-                            setMessages((prev) => {
-                                const updated = [...prev];
-                                updated[updated.length - 1] = {
-                                    role: "assistant",
-                                    content: accumulatedThinking,
-                                };
-                                return updated;
-                            });
-                        } else if (event.type === "file_patch") {
-                            // Accumulate locally — don't touch state yet
-                            localPatches[event.path] = { code: event.code };
-                        } else if (event.type === "done") {
-                            // Apply all patches at once now that the stream is complete
-                            setFileData(event.fileData);
-                            setCredits(event.creditsRemaining);
-                            // Replace thinking text with clean summary
-                            setMessages((prev) => {
-                                const updated = [...prev];
-                                updated[updated.length - 1] = {
-                                    role: "assistant",
-                                    content: event.summary,
-                                };
-                                return updated;
-                            });
-                        } else if (event.type === "error") {
-                            toast.error(event.message);
-                            setMessages((prev) => prev.slice(0, -2));
-                            return;
+                            if (event.type === "thinking") {
+                                // Stream agent reasoning into the placeholder assistant message
+                                accumulatedThinking += event.text;
+                                setMessages((prev) => {
+                                    const updated = [...prev];
+                                    updated[updated.length - 1] = {
+                                        role: "assistant",
+                                        content: accumulatedThinking,
+                                    };
+                                    return updated;
+                                });
+                            } else if (event.type === "file_patch") {
+                                // Accumulate locally — don't touch state yet
+                                localPatches[event.path] = { code: event.code };
+                            } else if (event.type === "done") {
+                                // Apply all patches at once now that the stream is complete
+                                setFileData(event.fileData);
+                                setCredits(event.creditsRemaining);
+                                // Replace thinking text with clean summary
+                                setMessages((prev) => {
+                                    const updated = [...prev];
+                                    updated[updated.length - 1] = {
+                                        role: "assistant",
+                                        content: event.summary,
+                                    };
+                                    return updated;
+                                });
+                            } else if (event.type === "error") {
+                                toast.error(event.message);
+                                setMessages((prev) => prev.slice(0, -2));
+                                return;
+                            }
                         }
                     }
+                } catch (streamErr) {
+                    if (streamErr instanceof Error && streamErr.name === "AbortError") {
+                        throw streamErr;
+                    }
+                    console.error("Stream reading error:", streamErr);
+                    toast.error("Connection lost, please try again");
+                    setMessages((prev) => prev.slice(0, -2));
+                    return;
                 }
             } catch (err) {
                 // User-initiated stop — silently roll back the user + placeholder messages
