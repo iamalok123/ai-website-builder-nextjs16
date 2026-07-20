@@ -16,11 +16,11 @@ const Header = async () => {
             <nav className='mx-auto flex h-full max-w-7xl items-center justify-between px-2 sm:px-6'>
                 <Link href="/">
                     <Image
-                        src="/logo.png"
+                        src="/logo.svg"
                         alt="Zephyre"
-                        width={100}
-                        height={100}
-                        className='h-9 w-auto rounded-md'
+                        width={50}
+                        height={22}
+                        className='h-7 w-auto'
                     />
                 </Link>
 

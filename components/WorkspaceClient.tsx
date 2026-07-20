@@ -443,7 +443,7 @@ export function WorkspaceClient({
             {/* Workspace — Responsive layout (stacked on mobile, side-by-side on desktop) */}
             <div className="relative flex h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-[#0a0a0a]">
                 <div 
-                    className={`absolute inset-0 z-10 flex w-full flex-col transition-transform duration-300 ease-in-out md:relative md:z-auto md:w-[320px] md:translate-x-0 md:flex-col ${
+                    className={`absolute inset-0 z-10 flex w-full flex-col shrink-0 transition-transform duration-300 ease-in-out md:relative md:z-auto md:w-[320px] md:translate-x-0 md:flex-col ${
                         mobileView === "chat" ? "translate-x-0" : "-translate-x-full"
                     }`}
                 >

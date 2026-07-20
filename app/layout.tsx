@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   title: "Zephyre - AI App Builder",
   description: "Generate any app instantly with AI",
   icons: {
-    icon: "/logo-short-2.png"
+    icon: "/favicon.svg"
   }
 };
 

@@ -85,10 +85,10 @@ export default function Home() {
           Powered by Agentic AI
         </Badge>
 
-        <h1 className="mx-auto max-w-3xl text-balance font-serif text-5xl leading-tight tracking-tight sm:text-6xl lg:text-7xl z-10">
-          <GrayTitle>Zephyre your dream</GrayTitle>
+        <h1 className="mx-auto max-w-4xl text-balance font-serif text-5xl leading-tight tracking-tight sm:text-6xl lg:text-7xl z-10">
+          <GrayTitle>Build Stunning Websites</GrayTitle>
           <br />
-          <BlueTitle>from a single prompt.</BlueTitle>
+          <BlueTitle>just by typing...</BlueTitle>
         </h1>
 
         <p className="mx-auto mt-6 max-w-xl text-balance text-base leading-relaxed text-white/40 z-10">
@@ -366,8 +366,8 @@ export default function Home() {
               ? has?.({ plan: "pro" })
                 ? "pro"
                 : has?.({ plan: "standard" })
-                ? "standard"
-                : "free"
+                  ? "standard"
+                  : "free"
               : null;
 
             const isActive = isSignedIn && activePlanKey === plan.key;
