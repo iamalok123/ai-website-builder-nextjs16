@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
                 isClosed = true;
                 try {
                     controller.close();
-                } catch {}
+                } catch { }
             };
 
             // Accumulate file patches as the agent calls update_file
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
                 inputSchema: z.object({
                     path: z
                         .string()
-                        .describe("File path exactly as it appears, e.g. /App.js"),
+                        .describe("File path exactly as it appears, e.g. /App.jsx"),
                     code: z.string().describe("Complete new contents of the file"),
                     reason: z
                         .string()
@@ -155,7 +155,8 @@ WORKFLOW:
 RULES:
 - Always write complete file contents — never partial snippets.
 - Keep all existing functionality unless asked to remove it.
-- The entry point is always /App.js with a default export.
+- The entry point is always /App.jsx with a default export.
+- Use .jsx file extensions for all React component files.
 - All imports must reference files you've updated or packages in the available list above.
 - CRITICAL IMPORT RULE: Do not hallucinate imports. If you import icons from \`lucide-react\`, only use standard existing lucide icons. Do not import non-existent components (like \`Stats\`) from libraries.
 - CRITICAL EXPORT RULE: If you create a new component in a file, ensure it is properly exported. If you use a composite component, ensure it is defined in the file or imported correctly.
@@ -244,9 +245,9 @@ RULES:
                 );
             } catch (err: any) {
                 console.error("[improve] error:", err);
-                
+
                 let errorMessage = "Something went wrong. Please try again.";
-                
+
                 if (err?.status === 429 || err?.message?.includes("429") || err?.message?.includes("quota") || err?.message?.includes("Quota")) {
                     errorMessage = "You have exceeded your Gemini API rate limit (Free Tier). Please wait 60 seconds and try again.";
                 } else if (err?.status === 503 || err?.message?.includes("503")) {

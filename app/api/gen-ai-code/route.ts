@@ -85,16 +85,16 @@ RULES:
   "assistantMessage": "<brief explanation of what you built/changed>",
   "title": "<short 2-4 word title for the app, e.g. 'Todo List App'>",
   "files": {
-    "/App.js": { "code": "<full file content>" },
-    "/components/SomeComponent.js": { "code": "<full file content>" }
+    "/App.jsx": { "code": "<full file content>" },
+    "/components/SomeComponent.jsx": { "code": "<full file content>" }
   },
   "dependencies": {
     "some-package": "latest"
   }
 }
-3. Use React (functional components + hooks). Do NOT use TypeScript in generated files.
+3. Use React (functional components + hooks). Use .jsx file extensions for all component files.
 4. Use Tailwind CSS for all styling. Do not use CSS modules or inline styles unless absolutely necessary.
-5. The entry point must always be /App.js and must export a default component.
+5. The entry point must always be /App.jsx and must export a default component.
 6. All imports must reference files you include in "files" or packages in "dependencies".
 7. Do not include react, react-dom, or tailwindcss in "dependencies" — they are always available.
 8. When modifying existing code, ONLY include the files you have changed in the "files" object. Do not return untouched files.
@@ -241,7 +241,7 @@ export async function POST(req: NextRequest) {
                 isClosed = true;
                 try {
                     controller.close();
-                } catch {}
+                } catch { }
             };
 
             try {
@@ -437,9 +437,9 @@ export async function POST(req: NextRequest) {
                 );
             } catch (err: any) {
                 console.error("[gen-ai-code] stream error:", err);
-                
+
                 let errorMessage = "Something went wrong. Please try again.";
-                
+
                 // Parse specific API errors so the user knows what actually happened
                 if (err?.status === 429 || err?.message?.includes("429") || err?.message?.includes("quota")) {
                     errorMessage = "You have exceeded your Gemini API rate limit (Free Tier). Please wait 60 seconds and try again.";

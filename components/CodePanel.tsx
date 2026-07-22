@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import {
     SandpackProvider,
     SandpackLayout,
@@ -9,7 +9,7 @@ import {
     SandpackFileExplorer,
     useSandpack,
 } from "@codesandbox/sandpack-react";
-import { dracula, sandpackDark , amethyst } from "@codesandbox/sandpack-themes";
+import { sandpackDark, amethyst } from "@codesandbox/sandpack-themes";
 import {
     Eye,
     Code2,
@@ -33,7 +33,7 @@ import type { FileData, StatusStep } from "@/types/workspace";
 
 // Placeholder 
 const PLACEHOLDER_FILES = {
-    "/App.js": {
+    "/App.jsx": {
         code: `
             export default function App() {
                 return (
@@ -53,6 +53,9 @@ const PLACEHOLDER_FILES = {
                 );
             }
         `,
+    },
+    "/App.js": {
+        code: `import App from "./App.jsx";\nexport default App;\n`,
     },
 };
 
@@ -168,6 +171,14 @@ function SandpackInner({
             const currentSandpackFiles = sandpack.files;
             let hasChanges = false;
             for (const [path, fileObj] of Object.entries(currentSandpackFiles)) {
+                if (
+                    path === "/App.js" &&
+                    currentSandpackFiles["/App.jsx"] &&
+                    (fileObj.code.includes("Hello world") ||
+                        fileObj.code.includes('import App from "./App.jsx"'))
+                ) {
+                    continue;
+                }
                 if (prevFilesRef.current[path]?.code !== fileObj.code) {
                     hasChanges = true;
                     prevFilesRef.current[path] = { code: fileObj.code };
@@ -570,7 +581,28 @@ export function CodePanel({
         if (fileData) setActiveTab("preview");
     }, [fileData]);
 
-    const files = fileData?.files ?? PLACEHOLDER_FILES;
+    const rawFiles = fileData?.files ?? PLACEHOLDER_FILES;
+    const files = useMemo(() => {
+        const processed: Record<string, { code: string }> = { ...rawFiles };
+
+        // If /App.jsx exists, ensure /App.js re-exports it so Sandpack's default /App.js ("Hello world")
+        // does not take precedence over the generated /App.jsx.
+        if (processed["/App.jsx"]) {
+            const appJsCode = processed["/App.js"]?.code ?? "";
+            const isDefaultHello =
+                !appJsCode ||
+                appJsCode.includes("Hello world") ||
+                appJsCode.includes('import App from "./App.jsx"') ||
+                appJsCode.trim() === "";
+            if (isDefaultHello) {
+                processed["/App.js"] = {
+                    code: `import App from "./App.jsx";\nexport default App;\n`,
+                };
+            }
+        }
+        return processed;
+    }, [fileData?.files]);
+
     const dependencies = {
         ...BASE_DEPENDENCIES,
         ...(fileData?.dependencies ?? {}),
@@ -590,6 +622,7 @@ export function CodePanel({
                 files={files}
                 customSetup={{ dependencies }}
                 options={{
+                    activeFile: files["/App.jsx"] ? "/App.jsx" : "/App.js",
                     externalResources: ["https://cdn.tailwindcss.com"],
                     recompileMode: "delayed",
                     recompileDelay: 500,
