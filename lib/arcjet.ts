@@ -10,7 +10,7 @@ import arcjet, {
 // so corporate offices / VPNs sharing an IP don't share rate limits.
 
 export const aj = arcjet({
-    key: process.env.ARCJET_KEY!,
+    key: process.env.ARCJET_KEY || "ajkey_placeholder",
     characteristics: ["userId"],
     rules: [
         // ── Per-user rate limit ────────────────────────────────────────────────

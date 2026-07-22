@@ -2,7 +2,12 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { ChatPanel } from "./ChatPanel";
-import { CodePanel } from "./CodePanel";
+import dynamic from "next/dynamic";
+
+const CodePanel = dynamic(() => import("./CodePanel").then((mod) => mod.CodePanel), {
+    ssr: false,
+});
+
 import { MIN_CREDITS_TO_GENERATE } from "@/lib/constants";
 import { toast } from "sonner";
 import type {

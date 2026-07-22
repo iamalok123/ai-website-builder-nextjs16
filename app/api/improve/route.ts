@@ -51,8 +51,22 @@ export async function POST(request: NextRequest) {
 
     const stream = new ReadableStream({
         async start(controller) {
-            const enqueue = (chunk: string) =>
-                controller.enqueue(encoder.encode(chunk));
+            let isClosed = false;
+            const enqueue = (chunk: string) => {
+                if (isClosed) return;
+                try {
+                    controller.enqueue(encoder.encode(chunk));
+                } catch {
+                    isClosed = true;
+                }
+            };
+            const closeStream = () => {
+                if (isClosed) return;
+                isClosed = true;
+                try {
+                    controller.close();
+                } catch {}
+            };
 
             // Accumulate file patches as the agent calls update_file
             const patchedFiles: Record<string, { code: string }> = {
@@ -249,7 +263,7 @@ RULES:
                     })
                 );
             } finally {
-                controller.close();
+                closeStream();
             }
         },
     });

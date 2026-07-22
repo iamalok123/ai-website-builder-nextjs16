@@ -9,7 +9,7 @@ import {
     SandpackFileExplorer,
     useSandpack,
 } from "@codesandbox/sandpack-react";
-import { dracula } from "@codesandbox/sandpack-themes";
+import { dracula, sandpackDark , amethyst } from "@codesandbox/sandpack-themes";
 import {
     Eye,
     Code2,
@@ -586,7 +586,7 @@ export function CodePanel({
             <SandpackProvider
                 key={filePathKey}
                 template="react"
-                theme={dracula}
+                theme={amethyst}
                 files={files}
                 customSetup={{ dependencies }}
                 options={{

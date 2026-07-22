@@ -191,18 +191,20 @@ export async function POST(req: NextRequest) {
     });
 
     const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
-    const decision = await aj.protect(arcjetReq, {
-        requested: 1,
-        userId: clerkId,
-        detectPromptInjectionMessage: lastUserMessage,
-        sensitiveInfoValue: lastUserMessage,
-    });
+    if (process.env.ARCJET_KEY) {
+        const decision = await aj.protect(arcjetReq, {
+            requested: 1,
+            userId: clerkId,
+            detectPromptInjectionMessage: lastUserMessage,
+            sensitiveInfoValue: lastUserMessage,
+        });
 
-    if (decision.isDenied()) {
-        return Response.json(
-            { message: decision.reason?.type ?? "Request blocked" },
-            { status: 429 }
-        );
+        if (decision.isDenied()) {
+            return Response.json(
+                { message: decision.reason?.type ?? "Request blocked" },
+                { status: 429 }
+            );
+        }
     }
 
 
@@ -232,7 +234,6 @@ export async function POST(req: NextRequest) {
                     controller.enqueue(encoder.encode(chunk));
                 } catch (e) {
                     isClosed = true;
-                    throw e;
                 }
             };
             const closeStream = () => {

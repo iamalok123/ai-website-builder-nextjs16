@@ -15,7 +15,7 @@ const isProtectedRoute = createRouteMatcher([
 // Slack/Twitter unfurls work.
 
 const aj = arcjet({
-    key: process.env.ARCJET_KEY!,
+    key: process.env.ARCJET_KEY || "ajkey_placeholder",
     rules: [
         shield({ mode: "LIVE" }),
         detectBot({
@@ -26,9 +26,11 @@ const aj = arcjet({
 });
 
 export default clerkMiddleware(async (auth, req) => {
-    const decision = await aj.protect(req);
-    if (decision.isDenied()) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (process.env.ARCJET_KEY) {
+        const decision = await aj.protect(req);
+        if (decision.isDenied()) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
     }
 
     // Clerk auth guard — redirect unauthenticated users away from /workspace
