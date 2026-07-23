@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { WorkspaceClient } from "@/components/WorkspaceClient";
 import { getWorkspaceUser, getWorkspaceById } from "@/actions/workspace";
 
@@ -10,11 +11,13 @@ export default async function WorkspacePage({
 }: WorkspacePageProps) {
     const { prompt, id } = await searchParams;
 
-    const user = await getWorkspaceUser();
+    const [user, workspace] = await Promise.all([
+        getWorkspaceUser(),
+        id ? getWorkspaceById(id) : Promise.resolve(null),
+    ]);
 
-    let workspace = null;
-    if (id) {
-        workspace = await getWorkspaceById(id, user.id);
+    if (id && workspace && workspace.userId && workspace.userId !== user.id) {
+        redirect("/");
     }
 
     return (

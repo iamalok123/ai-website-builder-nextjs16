@@ -9,7 +9,7 @@ import {
     SandpackFileExplorer,
     useSandpack,
 } from "@codesandbox/sandpack-react";
-import { sandpackDark, amethyst } from "@codesandbox/sandpack-themes";
+import { amethyst } from "@codesandbox/sandpack-themes";
 import {
     Eye,
     Code2,

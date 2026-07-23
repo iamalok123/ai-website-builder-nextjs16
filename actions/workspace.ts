@@ -37,15 +37,16 @@ export async function getWorkspaceUser(): Promise<WorkspaceUser> {
 
 export async function getWorkspaceById(
     workspaceId: string,
-    userId: string
-): Promise<WorkspaceData> {
+    userId?: string
+): Promise<WorkspaceData & { userId?: string }> {
     const workspace = await db.workspace.findUnique({
-        where: { id: workspaceId, userId },
+        where: userId ? { id: workspaceId, userId } : { id: workspaceId },
         select: {
             id: true,
             title: true,
             messages: true,
             fileData: true,
+            userId: true,
         },
     });
 
