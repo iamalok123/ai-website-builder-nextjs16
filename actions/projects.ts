@@ -14,23 +14,25 @@ export async function getUserProjects(): Promise<ProjectSummary[]> {
     const { userId: clerkId } = await auth();
     if (!clerkId) redirect("/");
 
-    const user = await db.user.findUnique({
+    const userWithWorkspaces = await db.user.findUnique({
         where: { clerkId },
-        select: { id: true },
-    });
-    if (!user) redirect("/");
-
-    const workspaces = await db.workspace.findMany({
-        where: { userId: user.id },
         select: {
-            id: true,
-            title: true,
-            createdAt: true,
-            updatedAt: true,
-            messages: true,
+            workspaces: {
+                select: {
+                    id: true,
+                    title: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    messages: true,
+                },
+                orderBy: { updatedAt: "desc" },
+            },
         },
-        orderBy: { updatedAt: "desc" },
     });
+
+    if (!userWithWorkspaces) redirect("/");
+
+    const workspaces = userWithWorkspaces.workspaces;
 
     return workspaces.map((w) => {
         const msgs = Array.isArray(w.messages) ? w.messages : [];
