@@ -3,6 +3,7 @@ services:
     name: ai-website-builder
     env: node
     plan: starter
+    healthCheckPath: /api/health
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
