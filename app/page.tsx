@@ -81,13 +81,13 @@ export default function Home() {
     <main className='min-h-screen bg-[#07080c] text-white selection:bg-purple-500/30 selection:text-purple-200'>
 
       {/* HERO SECTION - DESIGNER OPTIMIZED DARK RELUME LANDING PAGE */}
-      <section className="relative pt-24 pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex flex-col items-center">
+      <section id="hero" className="relative pt-20 sm:pt-24 pb-12 sm:pb-16 px-2 sm:px-4 lg:px-6 max-w-350 mx-auto flex flex-col items-center">
         
         {/* Canvas Outer Frame Box */}
         <div
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
-          className="relative w-full rounded-2xl border border-white/8 bg-[#08090e]/90 backdrop-blur-md p-6 sm:p-12 lg:p-16 flex flex-col items-center text-center overflow-hidden shadow-[0_20px_80px_-15px_rgba(0,0,0,0.9)] min-h-165 justify-center transition-all group"
+          className="relative w-full rounded-2xl border border-white/8 bg-[#08090e]/90 backdrop-blur-md px-3 sm:px-6 py-8 sm:py-16 lg:py-20 flex flex-col items-center text-center overflow-hidden shadow-[0_20px_80px_-15px_rgba(0,0,0,0.9)] min-h-140 sm:min-h-165 justify-center transition-all group"
         >
           {/* Ambient Radial Spotlight Glows */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-purple-600/15 blur-[120px] pointer-events-none" />
@@ -111,54 +111,47 @@ export default function Home() {
           <div className="absolute -bottom-1.5 -left-1.5 h-3 w-3 rounded-xs bg-purple-500 border border-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.8)] z-20" />
           <div className="absolute -bottom-1.5 -right-1.5 h-3 w-3 rounded-xs bg-purple-500 border border-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.8)] z-20" />
 
-          {/* Canvas Left Border Shuffle Pill */}
-          <button
-            onClick={handleShuffleCards}
-            className="absolute bottom-3.5 left-4 sm:left-6 z-30 bg-[#141520]/90 hover:bg-[#1f2130] border border-purple-500/30 hover:border-purple-500/60 text-purple-300 text-xs font-semibold px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow-lg shadow-black/50 active:scale-95 transition-all cursor-pointer backdrop-blur-sm"
-          >
-            <Sparkles className="h-3.5 w-3.5 text-purple-400" />
-            Shuffle
-          </button>
-
           {/* Trust Pill Badge */}
-          <div className="z-10 inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/4 backdrop-blur-md px-4 py-1.5 text-xs font-medium text-zinc-300 shadow-sm mb-6">
+          <div className="z-10 inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-white/12 bg-white/4 backdrop-blur-md px-3 sm:px-4 py-1 sm:py-1.5 text-[11px] sm:text-xs font-medium text-zinc-300 shadow-sm mb-4 sm:mb-6">
             <span className="bg-linear-to-r from-amber-400 via-rose-400 to-pink-400 bg-clip-text text-transparent font-bold">
               1 Million+
             </span>{" "}
-            Designers & Developers trust Relume
+            Designers & Developers trust Zephyre
           </div>
 
           {/* Main Hero Headline */}
-          <h1 className="z-10 mx-auto max-w-4xl text-balance font-sans text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.08] drop-shadow-sm">
+          <h1 className="z-10 mx-auto max-w-4xl text-balance font-sans text-3xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.12] sm:leading-[1.08] drop-shadow-sm">
             Websites designed &
             <br />
             built faster with AI
           </h1>
 
           {/* Subtitle */}
-          <p className="z-10 mx-auto mt-5 max-w-2xl text-balance text-sm sm:text-base leading-relaxed text-zinc-400 font-normal relative">
+          <p className="z-10 mx-auto mt-3 sm:mt-5 max-w-2xl text-balance text-xs sm:text-base leading-relaxed text-zinc-400 font-normal relative px-2">
             Use AI as your design ally, not a replacement. Instantly generate Sitemaps, Wireframes and Style Guides for marketing websites—all in minutes
-
-            {/* Guest Green Cursor Badge */}
-            <span
-              style={{
-                transform: `translate(${mouseOffset.x * 22}px, ${mouseOffset.y * 14}px)`,
-              }}
-              className="hidden sm:flex absolute -right-6 -bottom-6 z-30 items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-0.5 text-[11px] font-bold text-white shadow-lg shadow-emerald-500/30 border border-emerald-400 transition-transform duration-300 ease-out"
-            >
-              <MousePointer2 className="h-3 w-3 fill-white text-white" />
-              Guest
-            </span>
           </p>
 
-          {/* ── FLOATING MOCKUP CARDS & CURSORS (LEFT SIDE) ────────────────── */}
+          {/* Mobile Floating Preview Cards Gallery (Visible on Mobile Screens < md) */}
+          <div className="flex md:hidden items-center justify-center gap-2.5 my-4 overflow-x-auto no-scrollbar w-full px-2 py-1 z-10">
+            <div className="w-36 shrink-0 rounded-xl border border-white/12 bg-[#161219]/90 p-1 shadow-lg -rotate-2">
+              <Image src="/hero-section/hero-1.webp" alt="Preview 1" width={140} height={90} className="w-full h-auto rounded-md object-cover" />
+            </div>
+            <div className="w-40 shrink-0 rounded-xl border border-white/12 bg-[#0b1728]/90 p-1 shadow-lg rotate-2">
+              <Image src="/hero-section/hero-4.webp" alt="Preview 2" width={160} height={100} className="w-full h-auto rounded-md object-cover" />
+            </div>
+            <div className="w-36 shrink-0 rounded-xl border border-white/12 bg-[#0c1c16]/90 p-1 shadow-lg -rotate-1">
+              <Image src="/hero-section/hero-5.webp" alt="Preview 3" width={140} height={90} className="w-full h-auto rounded-md object-cover" />
+            </div>
+          </div>
+
+          {/* ── FLOATING MOCKUP CARDS & CURSORS (DESKTOP / TABLET) ────────────────── */}
 
           {/* Card 1: Top Left - hero-1.webp */}
           <div
             style={{
-              transform: `translate(${mouseOffset.x * -18}px, ${mouseOffset.y * -14}px) rotate(${isShuffled ? 4 : -3}deg)`,
+              transform: `translate(${mouseOffset.x * -18}px, ${mouseOffset.y * -14}px) rotate(${isShuffled ? 4 : -5}deg)`,
             }}
-            className="hidden lg:block absolute left-4 top-8 z-10 w-56 rounded-xl border border-white/12 bg-[#161219]/90 p-1.5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.9)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:z-30 hover:border-rose-500/60 hover:shadow-[0_20px_50px_rgba(244,63,94,0.2)]"
+            className="hidden md:block absolute left-2 sm:left-4 lg:left-6 xl:left-8 top-6 z-10 w-48 sm:w-56 lg:w-64 rounded-xl border border-white/12 bg-[#161219]/90 p-1.5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.9)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:z-30 hover:border-rose-500/60 hover:shadow-[0_20px_50px_rgba(244,63,94,0.25)]"
           >
             <div className="flex items-center gap-1 px-1.5 py-1 mb-1 border-b border-white/5">
               <span className="h-1.5 w-1.5 rounded-full bg-rose-500/60" />
@@ -176,11 +169,12 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Card 2: Middle Left - hero-2.png */}
           <div
             style={{
-              transform: `translate(${mouseOffset.x * -24}px, ${mouseOffset.y * -18}px) rotate(${isShuffled ? -3 : 1}deg)`,
+              transform: `translate(${mouseOffset.x * -24}px, ${mouseOffset.y * -18}px) rotate(${isShuffled ? -3 : 2}deg)`,
             }}
-            className="hidden lg:block absolute left-2 top-48 z-10 w-60 rounded-xl border border-white/12 bg-[#12131a]/95 p-1.5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.9)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:z-30 hover:border-zinc-400 hover:shadow-[0_20px_50px_rgba(255,255,255,0.08)]"
+            className="hidden md:block absolute left-1 sm:left-2 lg:left-3 xl:left-4 top-48 lg:top-52 z-10 w-52 sm:w-60 lg:w-68 rounded-xl border border-white/12 bg-[#12131a]/95 p-1.5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.9)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:z-30 hover:border-purple-400 hover:shadow-[0_20px_50px_rgba(168,85,247,0.2)]"
           >
             <div className="flex items-center gap-1 px-1.5 py-1 mb-1 border-b border-white/5">
               <span className="h-1.5 w-1.5 rounded-full bg-white/20" />
@@ -198,11 +192,12 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Card 3: Bottom Left - hero-3.png */}
           <div
             style={{
-              transform: `translate(${mouseOffset.x * -12}px, ${mouseOffset.y * -20}px) rotate(${isShuffled ? 2 : -2}deg)`,
+              transform: `translate(${mouseOffset.x * -12}px, ${mouseOffset.y * -20}px) rotate(${isShuffled ? 3 : -3}deg)`,
             }}
-            className="hidden lg:block absolute left-6 bottom-20 z-10 w-64 rounded-xl border border-white/12 bg-[#090a0e]/95 p-1.5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.9)] transition-all duration-300 hover:scale-105 hover:z-30 hover:border-amber-500/60 hover:shadow-[0_20px_50px_rgba(251,191,36,0.15)]"
+            className="hidden lg:block absolute left-3 sm:left-4 lg:left-6 xl:left-10 bottom-6 sm:bottom-8 z-10 w-52 sm:w-60 lg:w-64 rounded-xl border border-white/12 bg-[#090a0e]/95 p-1.5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.9)] transition-all duration-300 hover:scale-105 hover:z-30 hover:border-amber-500/60 hover:shadow-[0_20px_50px_rgba(251,191,36,0.15)]"
           >
             <div className="flex items-center gap-1 px-1.5 py-1 mb-1 border-b border-white/5">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-500/60" />
@@ -236,9 +231,9 @@ export default function Home() {
           {/* Card 4: Top Right - hero-4.webp */}
           <div
             style={{
-              transform: `translate(${mouseOffset.x * 18}px, ${mouseOffset.y * -14}px) rotate(${isShuffled ? -4 : 3}deg)`,
+              transform: `translate(${mouseOffset.x * 18}px, ${mouseOffset.y * -14}px) rotate(${isShuffled ? -4 : 4}deg)`,
             }}
-            className="hidden lg:block absolute right-4 top-8 z-10 w-60 rounded-xl border border-white/12 bg-[#0b1728]/90 p-1.5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.9)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:z-30 hover:border-sky-500/60 hover:shadow-[0_20px_50px_rgba(14,165,233,0.2)]"
+            className="hidden md:block absolute right-2 sm:right-4 lg:right-6 xl:right-8 top-6 z-10 w-48 sm:w-56 lg:w-64 rounded-xl border border-white/12 bg-[#0b1728]/90 p-1.5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.9)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:z-30 hover:border-sky-500/60 hover:shadow-[0_20px_50px_rgba(14,165,233,0.2)]"
           >
             <div className="flex items-center gap-1 px-1.5 py-1 mb-1 border-b border-white/5">
               <span className="h-1.5 w-1.5 rounded-full bg-sky-500/60" />
@@ -259,9 +254,9 @@ export default function Home() {
           {/* Card 5: Middle Right - hero-5.webp + Mario Cursor */}
           <div
             style={{
-              transform: `translate(${mouseOffset.x * 24}px, ${mouseOffset.y * -18}px) rotate(${isShuffled ? 3 : -2}deg)`,
+              transform: `translate(${mouseOffset.x * 24}px, ${mouseOffset.y * -18}px) rotate(${isShuffled ? 4 : -3}deg)`,
             }}
-            className="hidden lg:block absolute right-2 top-48 z-10 w-60 rounded-xl border border-white/12 bg-[#0c1c16]/90 p-1.5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.9)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:z-30 hover:border-emerald-500/60 hover:shadow-[0_20px_50px_rgba(16,185,129,0.2)]"
+            className="hidden md:block absolute right-1 sm:right-2 lg:right-3 xl:right-4 top-48 lg:top-52 z-10 w-52 sm:w-60 lg:w-68 rounded-xl border border-white/12 bg-[#0c1c16]/90 p-1.5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.9)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:z-30 hover:border-emerald-500/60 hover:shadow-[0_20px_50px_rgba(16,185,129,0.2)]"
           >
             {/* Mario Blue Cursor Badge */}
             <div
@@ -293,9 +288,9 @@ export default function Home() {
           {/* Card 6: Bottom Right - hero-6.webp */}
           <div
             style={{
-              transform: `translate(${mouseOffset.x * 14}px, ${mouseOffset.y * -20}px) rotate(${isShuffled ? -2 : 2}deg)`,
+              transform: `translate(${mouseOffset.x * 14}px, ${mouseOffset.y * -20}px) rotate(${isShuffled ? -3 : 3}deg)`,
             }}
-            className="hidden lg:block absolute right-6 bottom-20 z-10 w-64 rounded-xl border border-white/12 bg-[#12131b]/95 p-1.5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.9)] transition-all duration-300 hover:scale-105 hover:z-30 hover:border-indigo-500/60 hover:shadow-[0_20px_50px_rgba(99,102,241,0.2)]"
+            className="hidden lg:block absolute right-3 sm:right-4 lg:right-6 xl:right-10 bottom-6 sm:bottom-8 z-10 w-52 sm:w-60 lg:w-64 rounded-xl border border-white/12 bg-[#12131b]/95 p-1.5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.9)] transition-all duration-300 hover:scale-105 hover:z-30 hover:border-indigo-500/60 hover:shadow-[0_20px_50px_rgba(99,102,241,0.2)]"
           >
             <div className="flex items-center gap-1 px-1.5 py-1 mb-1 border-b border-white/5">
               <span className="h-1.5 w-1.5 rounded-full bg-indigo-500/60" />
@@ -314,12 +309,12 @@ export default function Home() {
           </div>
 
           {/* ── AI WEBSITE GENERATOR INPUT PROMPT CONTAINER ────────────────── */}
-          <div className="z-20 mt-10 w-full max-w-2xl relative">
+          <div className="z-20 mt-6 sm:mt-10 w-full max-w-2xl relative px-1 sm:px-0">
             
             {/* Glowing Gradient Border Wrapper */}
             <div className="p-[2.5px] rounded-2xl bg-linear-to-r from-amber-500/80 via-purple-500/80 to-indigo-500/80 shadow-[0_0_40px_rgba(147,51,234,0.3)] hover:shadow-[0_0_60px_rgba(147,51,234,0.45)] transition-all duration-300">
               
-              <div className="rounded-[13px] bg-[#0c0d14]/95 backdrop-blur-xl p-4 sm:p-5 flex flex-col gap-3">
+              <div className="rounded-[13px] bg-[#0c0d14]/95 backdrop-blur-xl p-3.5 sm:p-5 flex flex-col gap-2.5 sm:gap-3">
                 <textarea
                   ref={textareaRef}
                   value={prompt}
@@ -329,12 +324,12 @@ export default function Home() {
                   onBlur={() => setIsFocused(false)}
                   placeholder="Describe a company in a sentence or two..."
                   rows={1}
-                  className="w-full resize-none bg-transparent px-2 text-sm placeholder:text-zinc-500 text-white focus:outline-none sm:text-base"
-                  style={{ minHeight: 48, maxHeight: 180 }}
+                  className="w-full resize-none bg-transparent px-1 sm:px-2 text-xs sm:text-base placeholder:text-zinc-500 text-white focus:outline-none"
+                  style={{ minHeight: 44, maxHeight: 180 }}
                 />
 
-                <div className="flex items-center justify-between border-t border-white/10 pt-3">
-                  <span className="text-xs text-zinc-500 hidden sm:inline">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between border-t border-white/10 pt-2.5 sm:pt-3 gap-2 sm:gap-0">
+                  <span className="text-[11px] sm:text-xs text-zinc-500 text-left hidden sm:inline">
                     Press ⏎ to generate · Shift+⏎ for new line
                   </span>
 
@@ -342,14 +337,14 @@ export default function Home() {
                     <Button
                       onClick={handleSubmit}
                       disabled={!prompt.trim()}
-                      className="ml-auto h-10 rounded-xl px-6 font-semibold bg-linear-to-r from-indigo-500 via-purple-600 to-pink-600 hover:brightness-110 text-white shadow-lg shadow-purple-500/25 flex items-center gap-2 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                      className="w-full sm:w-auto h-9 sm:h-10 rounded-xl px-5 sm:px-6 text-xs sm:text-sm font-semibold bg-linear-to-r from-indigo-500 via-purple-600 to-pink-600 hover:brightness-110 text-white shadow-lg shadow-purple-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
                     >
                       <Sparkles className="h-4 w-4" />
                       Generate
                     </Button>
                   ) : (
                     <SignInButton mode="modal">
-                      <Button className="ml-auto h-10 rounded-xl px-6 font-semibold bg-linear-to-r from-indigo-500 via-purple-600 to-pink-600 hover:brightness-110 text-white shadow-lg shadow-purple-500/25 flex items-center gap-2 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]">
+                      <Button className="w-full sm:w-auto h-9 sm:h-10 rounded-xl px-5 sm:px-6 text-xs sm:text-sm font-semibold bg-linear-to-r from-indigo-500 via-purple-600 to-pink-600 hover:brightness-110 text-white shadow-lg shadow-purple-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]">
                         <Sparkles className="h-4 w-4" />
                         Generate
                       </Button>
@@ -359,21 +354,40 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Suggestion Chips */}
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {/* Suggestion Chips - Marquee on Mobile, Static Centered on Desktop */}
+            {/* Desktop View */}
+            <div className="mt-4 hidden sm:flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={() => handleSuggestion(s)}
-                  className="rounded-full border border-white/8 bg-white/4 px-3.5 py-1.5 text-xs text-zinc-400 hover:border-purple-500/40 hover:bg-white/8 hover:text-white transition-all cursor-pointer"
+                  className="rounded-full border border-white/8 bg-white/4 px-3.5 py-1.5 text-xs text-zinc-400 hover:border-purple-500/40 hover:bg-white/8 hover:text-white transition-all cursor-pointer whitespace-nowrap"
                 >
                   {s}
                 </button>
               ))}
             </div>
+
+            {/* Mobile Marquee Scrolling View */}
+            <div className="mt-3 block sm:hidden overflow-hidden w-full max-w-full relative py-1 mask-[linear-gradient(to_right,transparent_0%,black_6%,black_94%,transparent_100%)]">
+              <div
+                className="animate-marquee-scroll flex w-max gap-2"
+                style={{ animation: 'marquee 16s linear infinite' }}
+              >
+                {[...SUGGESTIONS, ...SUGGESTIONS, ...SUGGESTIONS].map((s, idx) => (
+                  <button
+                    key={`${s}-${idx}`}
+                    onClick={() => handleSuggestion(s)}
+                    className="shrink-0 rounded-full border border-white/12 bg-white/5 px-3.5 py-1.5 text-[11px] font-medium text-zinc-300 hover:border-purple-500/60 hover:bg-purple-950/40 hover:text-white transition-all cursor-pointer whitespace-nowrap shadow-xs"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <p className="mt-6 text-xs text-zinc-500 z-10">
+          <p className="mt-4 sm:mt-6 text-[11px] sm:text-xs text-zinc-500 z-10">
             No credit card required · 10 free generations on sign up
           </p>
 
@@ -381,15 +395,15 @@ export default function Home() {
       </section>
 
       {/* ── 3 FEATURE CARDS SECTION (SITEMAPS, WIREFRAMES, STYLE GUIDE) ───────── */}
-      <section className="pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="z-20 grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl mx-auto text-left">
+      <section id="overview" className="pb-12 sm:pb-16 px-3 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div className="z-20 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 w-full max-w-5xl mx-auto text-left">
           
           {/* CARD 1: SITEMAPS */}
           <div
             onMouseEnter={() => setHoveredFeatureCard('sitemaps')}
             onMouseLeave={() => setHoveredFeatureCard(null)}
             className={cn(
-              "relative rounded-2xl border border-white/10 bg-[#0a0b13]/90 backdrop-blur-xl p-6 flex flex-col justify-between overflow-hidden shadow-2xl transition-all duration-300 group/card cursor-pointer min-h-95",
+              "relative rounded-2xl border border-white/10 bg-[#0a0b13]/90 backdrop-blur-xl p-5 sm:p-6 flex flex-col justify-between overflow-hidden shadow-2xl transition-all duration-300 group/card cursor-pointer min-h-80 sm:min-h-95",
               hoveredFeatureCard === 'sitemaps' ? "border-purple-500/60 shadow-[0_15px_40px_rgba(168,85,247,0.2)] -translate-y-1.5" : "hover:border-white/20"
             )}
           >
@@ -397,14 +411,14 @@ export default function Home() {
               <p className="text-xs font-bold uppercase tracking-wider bg-linear-to-r from-rose-400 to-purple-400 bg-clip-text text-transparent mb-1">
                 Plan
               </p>
-              <h3 className="text-2xl font-extrabold text-white tracking-tight mb-2">
+              <h3 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight mb-2">
                 Sitemaps
               </h3>
-              <p className="text-xs leading-relaxed text-zinc-400 font-normal mb-5">
+              <p className="text-xs leading-relaxed text-zinc-400 font-normal mb-4 sm:mb-5">
                 Quickly map out your website pages with an AI-generated sitemap
               </p>
 
-              <button className="inline-flex items-center gap-1.5 text-xs font-medium text-white border border-white/15 bg-white/5 hover:bg-white/10 rounded-lg px-3.5 py-1.5 transition-all mb-6">
+              <button className="inline-flex items-center gap-1.5 text-xs font-medium text-white border border-white/15 bg-white/5 hover:bg-white/10 rounded-lg px-3.5 py-1.5 transition-all mb-4 sm:mb-6">
                 Give it a try
               </button>
             </div>
@@ -457,7 +471,7 @@ export default function Home() {
             onMouseEnter={() => setHoveredFeatureCard('wireframes')}
             onMouseLeave={() => setHoveredFeatureCard(null)}
             className={cn(
-              "relative rounded-2xl border border-white/10 bg-[#0a0b13]/90 backdrop-blur-xl p-6 flex flex-col justify-between overflow-hidden shadow-2xl transition-all duration-300 group/card cursor-pointer min-h-95",
+              "relative rounded-2xl border border-white/10 bg-[#0a0b13]/90 backdrop-blur-xl p-5 sm:p-6 flex flex-col justify-between overflow-hidden shadow-2xl transition-all duration-300 group/card cursor-pointer min-h-80 sm:min-h-95",
               hoveredFeatureCard === 'wireframes' ? "border-blue-500/60 shadow-[0_15px_40px_rgba(59,130,246,0.2)] -translate-y-1.5" : "hover:border-white/20"
             )}
           >
@@ -465,20 +479,20 @@ export default function Home() {
               <p className="text-xs font-bold uppercase tracking-wider bg-linear-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent mb-1">
                 Structure
               </p>
-              <h3 className="text-2xl font-extrabold text-white tracking-tight mb-2">
+              <h3 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight mb-2">
                 Wireframes
               </h3>
-              <p className="text-xs leading-relaxed text-zinc-400 font-normal mb-5">
+              <p className="text-xs leading-relaxed text-zinc-400 font-normal mb-4 sm:mb-5">
                 Effortlessly structure your pages and copy with distraction-free wireframes
               </p>
 
-              <button className="inline-flex items-center gap-1.5 text-xs font-medium text-white border border-white/15 bg-white/5 hover:bg-white/10 rounded-lg px-3.5 py-1.5 transition-all mb-6">
+              <button className="inline-flex items-center gap-1.5 text-xs font-medium text-white border border-white/15 bg-white/5 hover:bg-white/10 rounded-lg px-3.5 py-1.5 transition-all mb-4 sm:mb-6">
                 Give it a try
               </button>
             </div>
 
             {/* Wireframes Mockup Graphic */}
-            <div className="relative mt-auto w-full rounded-xl border border-white/10 bg-[#0e101a]/90 p-3.5 flex flex-col gap-2.5 overflow-hidden shadow-inner min-h-35 justify-between">
+            <div className="relative mt-auto w-full rounded-xl border border-white/10 bg-[#0e101a]/90 p-3.5 flex flex-col gap-2.5 overflow-hidden shadow-inner min-h-32 sm:min-h-35 justify-between">
               <div className="flex items-center justify-between border-b border-white/10 pb-2">
                 <span className="text-xs font-bold text-white tracking-wide">Logo</span>
                 <div className="flex gap-2 text-[10px] text-zinc-400">
@@ -508,7 +522,7 @@ export default function Home() {
             onMouseEnter={() => setHoveredFeatureCard('styleguide')}
             onMouseLeave={() => setHoveredFeatureCard(null)}
             className={cn(
-              "relative rounded-2xl border border-white/10 bg-[#0a0b13]/90 backdrop-blur-xl p-6 flex flex-col justify-between overflow-hidden shadow-2xl transition-all duration-300 group/card cursor-pointer min-h-95",
+              "relative rounded-2xl border border-white/10 bg-[#0a0b13]/90 backdrop-blur-xl p-5 sm:p-6 flex flex-col justify-between overflow-hidden shadow-2xl transition-all duration-300 group/card cursor-pointer min-h-80 sm:min-h-95",
               hoveredFeatureCard === 'styleguide' ? "border-rose-500/60 shadow-[0_15px_40px_rgba(244,63,94,0.2)] -translate-y-1.5" : "hover:border-white/20"
             )}
           >
@@ -516,20 +530,20 @@ export default function Home() {
               <p className="text-xs font-bold uppercase tracking-wider bg-linear-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent mb-1">
                 Conceptualise
               </p>
-              <h3 className="text-2xl font-extrabold text-white tracking-tight mb-2">
+              <h3 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight mb-2">
                 Style Guide
               </h3>
-              <p className="text-xs leading-relaxed text-zinc-400 font-normal mb-5">
+              <p className="text-xs leading-relaxed text-zinc-400 font-normal mb-4 sm:mb-5">
                 Instantly create design concepts and apply the winning style across pages
               </p>
 
-              <button className="inline-flex items-center gap-1.5 text-xs font-medium text-white border border-white/15 bg-white/5 hover:bg-white/10 rounded-lg px-3.5 py-1.5 transition-all mb-6">
+              <button className="inline-flex items-center gap-1.5 text-xs font-medium text-white border border-white/15 bg-white/5 hover:bg-white/10 rounded-lg px-3.5 py-1.5 transition-all mb-4 sm:mb-6">
                 Give it a try
               </button>
             </div>
 
             {/* Style Guide Mockup Graphic + Color Swatches Side Bar */}
-            <div className="relative mt-auto w-full rounded-xl border border-white/10 bg-linear-to-br from-purple-900/60 via-indigo-900/50 to-pink-900/60 p-3.5 flex items-center justify-between overflow-hidden shadow-inner min-h-35">
+            <div className="relative mt-auto w-full rounded-xl border border-white/10 bg-linear-to-br from-purple-900/60 via-indigo-900/50 to-pink-900/60 p-3.5 flex items-center justify-between overflow-hidden shadow-inner min-h-32 sm:min-h-35">
               <div className="flex flex-col gap-1.5 max-w-[70%]">
                 <span className="text-xs font-black text-white leading-tight">
                   Culture, stories through art
@@ -578,51 +592,51 @@ export default function Home() {
 
 
       {/* ── BROWSER MOCKUP WORKSPACE PREVIEW ─────────────────────────────────── */}
-      <section className="px-4 pb-32 max-w-7xl mx-auto">
+      <section id="demo" className="px-3 sm:px-4 pb-16 sm:pb-32 max-w-7xl mx-auto">
         <div className="mx-auto max-w-5xl overflow-hidden rounded-2xl border border-white/12 bg-[#090a13]/95 shadow-[0_25px_80px_-15px_rgba(147,51,234,0.3)] backdrop-blur-xl transition-all hover:border-purple-500/40">
           
           {/* Top Browser Control Bar */}
-          <div className="flex items-center gap-2 border-b border-white/10 bg-[#0c0d16] px-4 py-3">
-            <div className="flex gap-2">
-              <div className="h-3 w-3 rounded-full bg-rose-500/80 shadow-xs shadow-rose-500/50" />
-              <div className="h-3 w-3 rounded-full bg-amber-500/80 shadow-xs shadow-amber-500/50" />
-              <div className="h-3 w-3 rounded-full bg-emerald-500/80 shadow-xs shadow-emerald-500/50" />
+          <div className="flex items-center gap-2 border-b border-white/10 bg-[#0c0d16] px-3.5 sm:px-4 py-3">
+            <div className="flex gap-1.5 sm:gap-2">
+              <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-rose-500/80 shadow-xs shadow-rose-500/50" />
+              <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-amber-500/80 shadow-xs shadow-amber-500/50" />
+              <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-emerald-500/80 shadow-xs shadow-emerald-500/50" />
             </div>
 
-            <div className="mx-auto flex h-7 w-72 items-center justify-center rounded-lg border border-white/10 bg-white/4 px-3 shadow-inner">
-              <span className="text-xs font-mono text-zinc-400 flex items-center gap-1.5">
+            <div className="mx-auto flex h-6 sm:h-7 w-48 sm:w-72 items-center justify-center rounded-lg border border-white/10 bg-white/4 px-3 shadow-inner">
+              <span className="text-[10px] sm:text-xs font-mono text-zinc-400 flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 zephyre.app/workspace
               </span>
             </div>
           </div>
 
-          <div className="flex flex-col md:flex-row h-115">
+          <div className="flex flex-col md:flex-row h-auto md:h-115">
             {/* Left Chat Panel */}
-            <div className="flex w-full md:w-80 flex-col border-r border-white/10 bg-[#0b0c16]">
-              <div className="border-b border-white/10 px-4 py-3 flex items-center justify-between">
+            <div className="flex w-full md:w-80 flex-col border-b md:border-b-0 md:border-r border-white/10 bg-[#0b0c16] max-h-72 md:max-h-none">
+              <div className="border-b border-white/10 px-4 py-2.5 sm:py-3 flex items-center justify-between">
                 <p className="text-xs uppercase tracking-wider font-bold text-purple-400">
                   AI Workspace Chat
                 </p>
                 <span className="h-2 w-2 rounded-full bg-purple-500 animate-ping" />
               </div>
 
-              <div className="flex-1 space-y-4 px-4 py-4 overflow-y-auto">
+              <div className="flex-1 space-y-3 px-3.5 py-3 overflow-y-auto">
                 <div className="flex justify-end">
-                  <div className="max-w-55 rounded-2xl rounded-br-sm border border-purple-500/40 bg-linear-to-r from-purple-600/30 to-indigo-600/30 px-3.5 py-2.5 shadow-md shadow-purple-900/20">
+                  <div className="max-w-55 rounded-2xl rounded-br-sm border border-purple-500/40 bg-linear-to-r from-purple-600/30 to-indigo-600/30 px-3 py-2 shadow-md shadow-purple-900/20">
                     <p className="text-xs text-purple-100 font-medium">
                       Build a kanban board with 3 columns and drag-and-drop
                     </p>
                   </div>
                 </div>
 
-                <div className="flex gap-2.5">
-                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-purple-500/30">
-                    <Zap className="h-3.5 w-3.5 fill-white text-white" />
+                <div className="flex gap-2">
+                  <div className="mt-0.5 flex h-5 sm:h-6 w-5 sm:w-6 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-purple-500/30">
+                    <Zap className="h-3 w-3 sm:h-3.5 sm:w-3.5 fill-white text-white" />
                   </div>
 
-                  <div className="rounded-2xl rounded-tl-sm border border-white/10 bg-white/4 px-3.5 py-2.5 backdrop-blur-sm">
-                    <p className="text-xs text-zinc-300 leading-relaxed">
+                  <div className="rounded-2xl rounded-tl-sm border border-white/10 bg-white/4 px-3 py-2 backdrop-blur-sm">
+                    <p className="text-[11px] sm:text-xs text-zinc-300 leading-relaxed">
                       I&apos;ll build a Kanban board with Todo, In Progress, and
                       Done columns. I&apos;ll use{" "}
                       <code className="text-purple-300 font-mono bg-purple-950/60 border border-purple-500/30 rounded px-1 py-0.5">@dnd-kit/core</code>{" "}
@@ -630,30 +644,15 @@ export default function Home() {
                     </p>
                   </div>
                 </div>
-
-                <div className="flex gap-2.5">
-                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-indigo-500 to-purple-600 text-white">
-                    <Zap className="h-3.5 w-3.5 fill-white text-white" />
-                  </div>
-                  <div className="flex items-center gap-1.5 rounded-2xl rounded-tl-sm border border-white/10 bg-white/4 px-3.5 py-3">
-                    {[0, 0.15, 0.3].map((delay) => (
-                      <span
-                        key={delay}
-                        className="h-1.5 w-1.5 animate-bounce rounded-full bg-purple-400"
-                        style={{ animationDelay: `${delay}s` }}
-                      />
-                    ))}
-                  </div>
-                </div>
               </div>
 
-              <div className="border-t border-white/10 px-3 py-3">
-                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 shadow-inner">
-                  <span className="flex-1 text-xs text-zinc-500 font-medium">
+              <div className="border-t border-white/10 px-3 py-2.5">
+                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 shadow-inner">
+                  <span className="flex-1 text-[11px] sm:text-xs text-zinc-500 font-medium">
                     Ask AI to modify design…
                   </span>
-                  <div className="h-6 w-6 rounded-lg bg-purple-600 flex items-center justify-center text-white">
-                    <ArrowRight className="h-3.5 w-3.5" />
+                  <div className="h-5 sm:h-6 w-5 sm:w-6 rounded-lg bg-purple-600 flex items-center justify-center text-white">
+                    <ArrowRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                   </div>
                 </div>
               </div>
@@ -662,27 +661,27 @@ export default function Home() {
             {/* Right Workspace Preview Grid */}
             <div className="flex flex-1 flex-col bg-[#0e0f1c]">
               <div className="flex items-center gap-2 border-b border-white/10 bg-[#0c0d16] px-4">
-                <button className="border-b-2 border-purple-500 px-4 py-2.5 text-xs font-bold text-white bg-purple-500/10">
+                <button className="border-b-2 border-purple-500 px-3 sm:px-4 py-2 sm:py-2.5 text-xs font-bold text-white bg-purple-500/10">
                   Live Preview
                 </button>
-                <button className="px-4 py-2.5 text-xs font-semibold text-zinc-400 hover:text-white transition-colors">
+                <button className="px-3 sm:px-4 py-2 sm:py-2.5 text-xs font-semibold text-zinc-400 hover:text-white transition-colors">
                   Code Editor
                 </button>
               </div>
 
-              <div className="flex flex-1 gap-3.5 overflow-hidden p-5">
+              <div className="flex flex-1 gap-2.5 sm:gap-3.5 overflow-x-auto no-scrollbar md:overflow-visible p-3.5 sm:p-5">
                 {[
                   { name: "Todo", count: 3, badge: "bg-amber-500/20 text-amber-300 border-amber-500/40", bar: "bg-amber-400" },
                   { name: "In Progress", count: 2, badge: "bg-purple-500/20 text-purple-300 border-purple-500/40", bar: "bg-purple-400" },
                   { name: "Done", count: 1, badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40", bar: "bg-emerald-400" },
                 ].map((col) => (
-                  <div key={col.name} className="flex w-1/3 flex-col gap-2.5 rounded-xl border border-white/8 bg-[#121320]/80 p-3 shadow-inner">
+                  <div key={col.name} className="flex w-60 sm:w-1/3 shrink-0 sm:shrink flex-col gap-2 sm:gap-2.5 rounded-xl border border-white/8 bg-[#121320]/80 p-2.5 sm:p-3 shadow-inner">
                     <div className="mb-1 flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wider font-extrabold text-white">
+                      <span className="text-[11px] sm:text-xs uppercase tracking-wider font-extrabold text-white">
                         {col.name}
                       </span>
 
-                      <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-bold", col.badge)}>
+                      <span className={cn("rounded-full border px-2 py-0.5 text-[9px] sm:text-[10px] font-bold", col.badge)}>
                         {col.count}
                       </span>
                     </div>
@@ -690,10 +689,10 @@ export default function Home() {
                     {Array.from({ length: col.count }).map((_, i) => (
                       <div
                         key={i}
-                        className="rounded-lg border border-white/10 bg-[#171828] p-3 shadow-md hover:border-purple-500/40 transition-all"
+                        className="rounded-lg border border-white/10 bg-[#171828] p-2.5 sm:p-3 shadow-md hover:border-purple-500/40 transition-all"
                       >
                         <div
-                          className={cn("mb-2 h-2 rounded-full", col.bar)}
+                          className={cn("mb-1.5 sm:mb-2 h-2 rounded-full", col.bar)}
                           style={{ width: `${65 + i * 12}%` }}
                         />
                         <div className="h-1.5 w-3/4 rounded-full bg-zinc-600/50" />
@@ -709,22 +708,22 @@ export default function Home() {
 
 
       {/* ── FEATURES SECTION ────────────────────────────────────────────────── */}
-      <section className="px-4 pb-32 max-w-7xl mx-auto">
-        <div className="mx-auto mb-14 max-w-5xl text-center">
+      <section id="features" className="px-3.5 sm:px-4 pb-16 sm:pb-32 max-w-7xl mx-auto">
+        <div className="mx-auto mb-8 sm:mb-14 max-w-5xl text-center">
           <SectionLabel>Everything you need</SectionLabel>
           <SectionHeading gray="From prompt" blue="to production." />
         </div>
 
-        <div className="mx-auto grid max-w-5xl grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mx-auto grid max-w-5xl grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map(({ icon: Icon, label, desc }) => (
             <div
               key={label}
-              className="group rounded-2xl border border-white/10 bg-[#0a0b14]/90 p-7 shadow-xl backdrop-blur-xl hover:border-purple-500/50 hover:shadow-[0_15px_35px_rgba(168,85,247,0.15)] transition-all duration-300"
+              className="group rounded-2xl border border-white/10 bg-[#0a0b14]/90 p-5 sm:p-7 shadow-xl backdrop-blur-xl hover:border-purple-500/50 hover:shadow-[0_15px_35px_rgba(168,85,247,0.15)] transition-all duration-300"
             >
-              <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl border border-purple-500/30 bg-linear-to-br from-purple-500/20 via-indigo-500/20 to-pink-500/20 text-purple-300 shadow-md group-hover:scale-110 group-hover:border-purple-400 transition-all">
-                <Icon className="h-5 w-5 text-purple-300 group-hover:text-white" />
+              <div className="mb-4 sm:mb-5 flex h-10 sm:h-11 w-10 sm:w-11 items-center justify-center rounded-xl border border-purple-500/30 bg-linear-to-br from-purple-500/20 via-indigo-500/20 to-pink-500/20 text-purple-300 shadow-md group-hover:scale-110 group-hover:border-purple-400 transition-all">
+                <Icon className="h-4 sm:h-5 w-4 sm:w-5 text-purple-300 group-hover:text-white" />
               </div>
-              <p className="mb-2 text-base font-extrabold text-white tracking-tight">{label}</p>
+              <p className="mb-1.5 sm:mb-2 text-base font-extrabold text-white tracking-tight">{label}</p>
               <p className="text-xs leading-relaxed text-zinc-400 font-normal">{desc}</p>
             </div>
           ))}
@@ -733,17 +732,17 @@ export default function Home() {
 
 
       {/* ── HOW IT WORKS SECTION ────────────────────────────────────────────── */}
-      <section className="px-4 pb-32 max-w-7xl mx-auto">
-        <div className="mx-auto mb-14 max-w-3xl text-center">
+      <section id="how-it-works" className="px-3.5 sm:px-4 pb-16 sm:pb-32 max-w-7xl mx-auto">
+        <div className="mx-auto mb-8 sm:mb-14 max-w-3xl text-center">
           <SectionLabel>How it works</SectionLabel>
           <SectionHeading gray="Four steps" blue="to a working app." />
         </div>
 
         <div className="mx-auto max-w-3xl">
           {STEPS.map((step, i) => (
-            <div key={step.number} className="flex gap-6">
+            <div key={step.number} className="flex gap-4 sm:gap-6">
               <div className="flex flex-col items-center">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full border border-purple-500/40 bg-linear-to-br from-purple-600 via-indigo-600 to-pink-600 text-white shadow-lg shadow-purple-500/25">
+                <div className="flex h-9 sm:h-11 w-9 sm:w-11 items-center justify-center rounded-full border border-purple-500/40 bg-linear-to-br from-purple-600 via-indigo-600 to-pink-600 text-white shadow-lg shadow-purple-500/25">
                   <span className="font-mono text-xs font-bold text-white">
                     {step.number}
                   </span>
@@ -754,8 +753,8 @@ export default function Home() {
                 )}
               </div>
 
-              <div className="pb-10 pt-1.5">
-                <p className="mb-1.5 text-base font-extrabold text-white sm:text-lg tracking-tight">
+              <div className="pb-6 sm:pb-10 pt-0.5 sm:pt-1.5">
+                <p className="mb-1 sm:mb-1.5 text-base font-extrabold text-white sm:text-lg tracking-tight">
                   {step.label}
                 </p>
 
@@ -770,17 +769,17 @@ export default function Home() {
 
 
       {/* ── PRICING SECTION ─────────────────────────────────────────────────── */}
-      <section className="px-4 pb-32 max-w-7xl mx-auto">
-        <div className="mx-auto mb-14 max-w-5xl text-center">
+      <section id="pricing" className="px-3.5 sm:px-4 pb-16 sm:pb-32 max-w-7xl mx-auto">
+        <div className="mx-auto mb-8 sm:mb-14 max-w-5xl text-center">
           <SectionLabel>Simple pricing</SectionLabel>
           <SectionHeading gray="Start free," blue="scale when ready." />
 
-          <p className="mx-auto mt-4 max-w-sm text-sm text-zinc-400 font-normal">
+          <p className="mx-auto mt-3 sm:mt-4 max-w-sm text-xs sm:text-sm text-zinc-400 font-normal">
             No credit card required. Upgrade or downgrade anytime.
           </p>
         </div>
 
-        <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 sm:grid-cols-3 items-stretch">
+        <div className="mx-auto grid max-w-5xl grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-3 items-stretch">
           {PRICING_PLANS.map((plan) => {
             const planOrder: Record<string, number> = {
               free: 0,
@@ -806,16 +805,16 @@ export default function Home() {
               <div
                 key={plan.key}
                 className={cn(
-                  "relative flex flex-col rounded-2xl border p-7 transition-all backdrop-blur-xl shadow-xl",
+                  "relative flex flex-col rounded-2xl border p-5 sm:p-7 transition-all backdrop-blur-xl shadow-xl",
                   plan.featured
-                    ? "border-purple-500/60 bg-linear-to-b from-purple-950/40 via-[#0d0e1b]/95 to-indigo-950/40 shadow-[0_20px_60px_rgba(168,85,247,0.25)] scale-[1.02] z-10"
+                    ? "border-purple-500/60 bg-linear-to-b from-purple-950/40 via-[#0d0e1b]/95 to-indigo-950/40 shadow-[0_20px_60px_rgba(168,85,247,0.25)] sm:scale-[1.02] z-10"
                     : "border-white/10 bg-[#0a0b14]/90 hover:border-purple-500/30"
                 )}
               >
                 {/* Most popular pill */}
                 {plan.featured && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="rounded-full bg-linear-to-r from-purple-500 via-rose-500 to-pink-500 px-4 py-1 text-[11px] font-extrabold text-white shadow-lg shadow-purple-500/40 tracking-wide uppercase">
+                    <span className="rounded-full bg-linear-to-r from-purple-500 via-rose-500 to-pink-500 px-3.5 py-0.5 sm:px-4 sm:py-1 text-[10px] sm:text-[11px] font-extrabold text-white shadow-lg shadow-purple-500/40 tracking-wide uppercase">
                       Most popular
                     </span>
                   </div>
@@ -834,25 +833,25 @@ export default function Home() {
                 </div>
 
                 {/* Description */}
-                <p className="mb-6 text-xs leading-relaxed text-zinc-400 font-normal">
+                <p className="mb-4 sm:mb-6 text-xs leading-relaxed text-zinc-400 font-normal">
                   {plan.description}
                 </p>
 
                 {/* Price */}
                 <div className="mb-1 flex items-baseline gap-1">
-                  <span className="text-4xl font-extrabold text-white tracking-tight">
+                  <span className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
                     {plan.price === 0 ? "$0" : `$${plan.price}`}
                   </span>
                   {plan.price > 0 && (
                     <span className="text-xs text-zinc-400 font-medium">/mo</span>
                   )}
                 </div>
-                <p className="mb-6 text-xs text-zinc-500 font-medium">
+                <p className="mb-4 sm:mb-6 text-xs text-zinc-500 font-medium">
                   {plan.price === 0 ? "Always free" : "Only billed monthly"}
                 </p>
 
                 {/* Feature list */}
-                <div className="mb-8 space-y-3 border-t border-white/10 pt-6">
+                <div className="mb-6 sm:mb-8 space-y-2.5 sm:space-y-3 border-t border-white/10 pt-4 sm:pt-6">
                   {plan.features.map((f) => (
                     <div key={f} className="flex items-center gap-2.5">
                       <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">
@@ -945,7 +944,7 @@ export default function Home() {
 
 
       {/* ── CTA SECTION ─────────────────────────────────────────────────────── */}
-      <section className="relative mx-auto mb-32 max-w-5xl overflow-hidden rounded-2xl border border-purple-500/30 bg-[#090a13]/90 px-10 py-24 text-center shadow-[0_20px_80px_rgba(147,51,234,0.3)] backdrop-blur-xl">
+      <section id="cta" className="relative mx-auto mb-16 sm:mb-32 max-w-5xl overflow-hidden rounded-2xl border border-purple-500/30 bg-[#090a13]/90 px-5 sm:px-10 py-14 sm:py-24 text-center shadow-[0_20px_80px_rgba(147,51,234,0.3)] backdrop-blur-xl">
         <HoleBackground
           strokeColor="rgba(168,85,247,0.15)"
           numberOfLines={36}
@@ -962,7 +961,7 @@ export default function Home() {
 
         <SectionHeading gray="Start building," blue="for free." />
 
-        <p className="mb-8 text-xs sm:text-sm leading-relaxed text-zinc-400 font-normal relative z-10 max-w-md mx-auto">
+        <p className="mb-6 sm:mb-8 text-xs sm:text-sm leading-relaxed text-zinc-400 font-normal relative z-10 max-w-md mx-auto px-2">
           Get 10 free generations on sign up. No credit card required.
           <br />
           Upgrade when you&apos;re ready.
@@ -971,7 +970,7 @@ export default function Home() {
         <SignInButton mode="modal">
           <Button
             size="lg"
-            className="relative z-10 h-12 rounded-xl bg-linear-to-r from-indigo-500 via-purple-600 to-pink-600 hover:brightness-110 text-white font-bold text-sm px-8 shadow-xl shadow-purple-500/30 hover:scale-105 transition-all cursor-pointer"
+            className="relative z-10 h-11 sm:h-12 rounded-xl bg-linear-to-r from-indigo-500 via-purple-600 to-pink-600 hover:brightness-110 text-white font-bold text-xs sm:text-sm px-6 sm:px-8 w-full sm:w-auto shadow-xl shadow-purple-500/30 hover:scale-105 transition-all cursor-pointer justify-center"
           >
             Get started free
             <ChevronRight className="h-4 w-4 ml-1" />

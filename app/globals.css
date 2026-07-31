@@ -127,6 +127,35 @@
   }
 
   html {
-    @apply font-sans;
+    @apply font-sans scroll-smooth scroll-pt-20;
   }
+}
+
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee-scroll {
+  display: flex;
+  width: max-content;
+  animation: marquee 16s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-scroll:hover,
+.animate-marquee-scroll:active {
+  animation-play-state: paused;
 }
