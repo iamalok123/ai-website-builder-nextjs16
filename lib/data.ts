@@ -72,3 +72,30 @@ export const PLACEHOLDERS = [
     "An expense tracker with monthly breakdowns…",
     "A habit tracker with streaks and heatmaps…",
 ];
+
+export const FAQS = [
+  {
+    question: "Do I need design or coding skills to use this?",
+    answer: "No. Zephyre AI is designed for both beginners and professionals. You can start with AI-generated structures and customize them visually or hand them off to designers and developers."
+  },
+  {
+    question: "How does the AI website builder work?",
+    answer: "Zephyre AI analyzes your prompt to generate full sitemaps, wireframes, style guides, and production-ready Next.js code tailored to your brand in seconds."
+  },
+  {
+    question: "What are daily credits and how do they work?",
+    answer: "Daily credits let you generate and iterate on websites every day. Free accounts receive 10 generations upon sign up, and paid plans unlock unlimited daily credits."
+  },
+  {
+    question: "Can I collaborate with my team?",
+    answer: "Yes! You can share workspace links, invite team members, leave real-time feedback, and export assets together."
+  },
+  {
+    question: "Can I export my designs to other tools?",
+    answer: "Absolutely. You can export clean React/Next.js TypeScript code, CSS styles, or copy raw HTML directly into your favorite editors."
+  },
+  {
+    question: "Is my data private and secure?",
+    answer: "Yes. We take security seriously. All generated code and uploaded assets are privately encrypted and never sold or shared with third parties."
+  }
+];
