@@ -13,8 +13,8 @@ import { MobileHeaderMenu } from './MobileHeaderMenu'
 const Header = async () => {
     const user = await checkUser()
     return (
-        <header className='fixed w-full top-0 left-0 z-50 border-b border-white/10 bg-[#090a0f]/90 backdrop-blur-xl transition-all duration-300'>
-            <nav className='relative mx-auto flex h-14 sm:h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8'>
+        <header className='fixed w-full top-3 sm:top-4 inset-x-0 z-50 px-3 sm:px-6 lg:px-8 pointer-events-none'>
+            <nav className='relative mx-auto flex h-14 sm:h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8 rounded-2xl border border-white/12 bg-[#08090e]/85 backdrop-blur-2xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] pointer-events-auto transition-all duration-300 hover:border-white/20'>
                 <div className="flex items-center">
                     <Link href="/" className="flex items-center gap-2.5 sm:gap-3 group transition-transform hover:scale-[1.02]">
                         <Image
@@ -32,12 +32,18 @@ const Header = async () => {
                 </div>
 
                 {/* Centered Navigation Points (Desktop) */}
-                <div className="absolute left-1/2 -translate-x-1/2 hidden md:flex items-center gap-6 lg:gap-8 text-sm font-medium">
+                <div className="absolute left-1/2 -translate-x-1/2 hidden md:flex items-center gap-5 lg:gap-7 text-xs sm:text-sm font-medium">
                     <Link
-                        href="/#overview"
+                        href="/#hero"
                         className="text-zinc-400 hover:text-white transition-colors duration-200"
                     >
                         Overview
+                    </Link>
+                    <Link
+                        href="/#demo"
+                        className="text-zinc-400 hover:text-white transition-colors duration-200"
+                    >
+                        Mockup
                     </Link>
                     <Link
                         href="/#features"
@@ -56,6 +62,12 @@ const Header = async () => {
                         className="text-zinc-400 hover:text-white transition-colors duration-200"
                     >
                         Pricing
+                    </Link>
+                    <Link
+                        href="/#faq"
+                        className="text-zinc-400 hover:text-white transition-colors duration-200"
+                    >
+                        FAQ
                     </Link>
                 </div>
 

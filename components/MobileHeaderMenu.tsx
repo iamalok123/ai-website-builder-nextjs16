@@ -59,11 +59,18 @@ export const MobileHeaderMenu = ({ user }: MobileHeaderMenuProps) => {
                                     Navigation
                                 </span>
                                 <Link
-                                    href="/#overview"
+                                    href="/#hero"
                                     onClick={() => setIsOpen(false)}
                                     className="text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg transition-colors"
                                 >
                                     Overview
+                                </Link>
+                                <Link
+                                    href="/#demo"
+                                    onClick={() => setIsOpen(false)}
+                                    className="text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg transition-colors"
+                                >
+                                    Mockup
                                 </Link>
                                 <Link
                                     href="/#features"
@@ -85,6 +92,13 @@ export const MobileHeaderMenu = ({ user }: MobileHeaderMenuProps) => {
                                     className="text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg transition-colors"
                                 >
                                     Pricing
+                                </Link>
+                                <Link
+                                    href="/#faq"
+                                    onClick={() => setIsOpen(false)}
+                                    className="text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg transition-colors"
+                                >
+                                    FAQ
                                 </Link>
                             </div>
 

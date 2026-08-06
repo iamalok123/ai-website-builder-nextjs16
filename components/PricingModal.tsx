@@ -22,11 +22,31 @@ interface PricingModalProps {
     reason?: "credits" | "upgrade";
 }
 
+function useSafeAuth() {
+    try {
+        return useAuth();
+    } catch {
+        return {
+            isLoaded: false,
+            isSignedIn: false,
+            userId: null,
+            sessionId: null,
+            actor: null,
+            orgId: null,
+            orgRole: null,
+            orgSlug: null,
+            has: () => false,
+            signOut: async () => {},
+            getToken: async () => null,
+        };
+    }
+}
+
 export function PricingModal({
     children,
     reason = "upgrade",
 }: PricingModalProps) {
-    const { isSignedIn, has } = useAuth();
+    const { isSignedIn, has } = useSafeAuth();
 
     const title =
         reason === "credits" ? "You're out of credits" : "Upgrade your plan";
