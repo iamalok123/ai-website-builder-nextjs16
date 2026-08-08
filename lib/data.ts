@@ -1,12 +1,22 @@
 import { Sparkles, Zap, Code2, Eye, Package, ImageIcon } from "lucide-react";
 
 export const SUGGESTIONS = [
-    "A Spotify stats dashboard with charts",
-    "A kanban board with drag and drop",
-    "A weather app with animated icons",
-    "A personal finance tracker",
-    "A recipe finder with filters",
-    "A pomodoro timer with tasks",
+    { text: "A Spotify stats dashboard with charts & audio visualizer", tag: "Music", icon: "🎵" },
+    { text: "A kanban task board with drag & drop and analytics", tag: "Productivity", icon: "📋" },
+    { text: "A weather app with 3D animated radar & forecast cards", tag: "Dashboard", icon: "⛅" },
+    { text: "A personal finance tracker with monthly budget breakdowns", tag: "Finance", icon: "💰" },
+    { text: "A recipe finder with AI nutrition macro calculation", tag: "Health", icon: "🍳" },
+    { text: "A pomodoro productivity timer with custom soundscapes", tag: "Tools", icon: "⏱️" },
+    { text: "An AI landing page builder with live theme toggle", tag: "AI App", icon: "🚀" },
+    { text: "A ChatGPT clone with custom system prompts & model picker", tag: "AI App", icon: "🤖" },
+    { text: "A real-time crypto & stock market portfolio dashboard", tag: "Finance", icon: "📈" },
+    { text: "A habit streak tracker with GitHub-style heatmaps", tag: "Productivity", icon: "🧘" },
+    { text: "An e-commerce storefront with cart & instant checkout", tag: "E-Commerce", icon: "🛒" },
+    { text: "A retro pixel arcade game with high scores & sound FX", tag: "Gaming", icon: "🎮" },
+    { text: "A markdown note-taking app with split-screen live preview", tag: "Developer", icon: "📝" },
+    { text: "A lo-fi ambient audio player with audio visualizer", tag: "Audio", icon: "🎧" },
+    { text: "A travel itinerary planner & real-time flight search", tag: "Travel", icon: "✈️" },
+    { text: "An interactive canvas whiteboard with drawing & export", tag: "Design", icon: "🎨" },
 ];
 
 export const FEATURES = [
