@@ -1,121 +1,136 @@
-# 🚀 AI Website Builder - Next.js 16
+# 🚀 AI Website Builder - Next.js 16 & React 19
 
-![Next.js](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js)
-![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
-![Prisma](https://img.shields.io/badge/Prisma-ORM-1B222D?style=for-the-badge&logo=prisma)
+![Next.js](https://img.shields.io/badge/Next.js-16.2.10-black?style=for-the-badge&logo=next.js)
+![React](https://img.shields.io/badge/React-19.2.4-blue?style=for-the-badge&logo=react)
+![Node.js](https://img.shields.io/badge/Node.js-22.14.0-339933?style=for-the-badge&logo=node.js)
+![Prisma](https://img.shields.io/badge/Prisma-7.8.0-1B222D?style=for-the-badge&logo=prisma)
 ![TailwindCSS](https://img.shields.io/badge/Tailwind-v4-38B2AC?style=for-the-badge&logo=tailwind-css)
 ![Google Gemini](https://img.shields.io/badge/Google_Gemini-3.5_Flash-4285F4?style=for-the-badge&logo=google)
-![Arcjet](https://img.shields.io/badge/Arcjet-Security-red?style=for-the-badge)
+![Arcjet Security](https://img.shields.io/badge/Arcjet-Shield_%26_Bot_Protection-red?style=for-the-badge)
+![Render](https://img.shields.io/badge/Render-Deployed-46E3B7?style=for-the-badge&logo=render)
 
-## 📖 Introduction
-
-Welcome to the **AI Website Builder**, an advanced, highly-interactive platform that bridges the gap between natural language and functional code. Engineered with the cutting-edge **Next.js 16 (App Router)** and **React 19**, this application allows users to describe their desired web application, component, or layout in simple text, and watch it come to life in a live, in-browser execution sandbox.
-
-By leveraging Google's **Gemini 3.5 Flash AI model**, the platform translates prompts into fully functional, styled, and validated React code. It's designed to accelerate development, aid prototyping, and lower the barrier to entry for modern web development.
+A full-stack, enterprise-grade AI Web Application & Component Builder powered by **Next.js 16 (App Router)**, **React 19**, and **Google Gemini 3.5 Flash**. The platform transforms natural language descriptions and visual inputs into production-ready React applications with real-time SSE AI thought streaming and instant in-browser Sandpack execution.
 
 ---
 
-## ✨ Comprehensive Feature Set
+## 🌟 What's New in Recent Updates
 
-### 🧠 Advanced AI Code Generation
-- **Intelligent Prompt Processing:** Converts natural language and even image inputs into complete, production-ready React applications.
-- **Server-Sent Events (SSE) Streaming:** Delivers AI responses in real-time. You see "thought chunks" (e.g., *Designing layout...*, *Adding interactivity...*) for an engaging UX before the final code is rendered.
-- **Iterative Refinement:** After the initial generation, continue the conversation. Ask the AI to change colors, add animations, or refactor components, and watch the preview update instantly.
+- 🎨 **Landing Page & Theme Overhaul:** Complete redesign featuring an orange accent dark-workspace mockup, floating glassmorphic navbar, unified demo preview, and marquee prompt suggestion chips.
+- 📱 **Responsive Mobile Navigation:** Added a sleek `MobileHeaderMenu` with drawer navigation for mobile devices.
+- ⚡ **Instant Workspace & Project Loading:** Introduced dedicated Next.js 16 loading boundary screens (`workspace/loading.tsx` and `projects/loading.tsx`) and optimized server actions to deliver faster perceived load times.
+- 🛠️ **Deployment & Health Monitoring:** Added `/api/health` health check route, `proxy.ts` middleware exception for keep-alive pings, and complete `render.yaml` configuration.
+- 🔒 **Node 22 & Prisma 7 Upgrade:** Upgraded engine requirements (`Node >= 22.12.0`) to ensure full compatibility with Prisma 7 ORM and client adapter performance.
 
-### 💻 Live Browser Sandbox
-- **Sandpack Integration:** Uses CodeSandbox's `@codesandbox/sandpack-react` to execute the generated React and Tailwind code securely inside the browser.
-- **No Local Setup Required:** Users can test their generated apps immediately without configuring Webpack, Vite, or a local Node.js environment.
+---
 
-### 🔐 Robust Authentication & User Management
-- **Clerk Auth:** Secure, frictionless sign-ups, sign-ins, and session management using `@clerk/nextjs`.
-- **Credit-Based System:** Users start with a free tier of 10 credits. Each generation deducts a credit via atomic Prisma transactions, ensuring fairness and preventing abuse.
+## ✨ Key Features
+
+### 🧠 Real-Time AI Code Generation & Streaming
+- **SSE Stream Processing:** Streams response "thought chunks" (e.g. *Analyzing prompt...*, *Structuring Tailwind layout...*, *Adding interactive state...*) via Server-Sent Events before delivering code.
+- **Iterative Refinement:** Refine generated UI through follow-up prompt prompts. Modify styling, add animations, or create sub-components dynamically.
+- **NPM Registry Hallucination Shield:** Validates imported packages against the official NPM registry to prevent broken dependency imports in Sandpack.
+
+### 💻 In-Browser Interactive Execution Sandbox
+- **Powered by Sandpack:** Runs generated React 19 and Tailwind CSS code directly inside an isolated browser sandbox (`@codesandbox/sandpack-react`).
+- **Zero Local Setup:** Instant visual feedback without compiling or installing dependencies locally.
+
+### 🔐 Authentication & Atomic Credit Economy
+- **Clerk Authentication:** Frictionless user sign-up, sign-in, and session management (`@clerk/nextjs`).
+- **Atomic Credit Ledger:** New users receive 10 initial credits. Credits are deducted via atomic Prisma database transactions (`db.$transaction`) only upon successful code generation.
 
 ### 🛡️ Enterprise-Grade Security
-- **Arcjet Protection:** Deeply integrated `@arcjet/next` to block bots, enforce rate-limiting, and protect against AI Prompt Injections and sensitive data leaks.
-
-### 🗄️ Reliable Data Persistence
-- **Prisma & PostgreSQL:** Scalable relational data modeling hosted on Supabase.
-- **Workspace Management:** Every conversation is saved as a discrete Workspace, preserving chat history, generated files, and npm dependencies.
-
-### 🎨 Modern UI & Animations
-- **Shadcn UI & Base UI:** Accessible, beautiful component primitives.
-- **Tailwind CSS v4 & Framer Motion:** Fluid page transitions, micro-interactions, and comprehensive dark/light mode support.
+- **Arcjet Security Engine:** Integrated `@arcjet/next` to block bot pings, mitigate AI prompt injection attacks, and shield against malicious rate abuse.
+- **Server Action Protection:** Authenticated user session checks and row-level workspace ownership enforcement across all Server Actions.
 
 ---
 
-## 🏗️ Technology Stack
+## 🏗️ Architecture & Data Flow
 
-### Frontend Architecture
-- **Framework:** Next.js 16.2.10 (App Router)
-- **Library:** React 19
-- **Styling:** Tailwind CSS v4, PostCSS
-- **Components:** Shadcn UI, Base UI, Lucide React
-- **Animations:** Framer Motion 12, Tailwind Animate CSS
-- **Code Execution:** Sandpack React & Themes
-
-### Backend & AI Integration
-- **Generative AI:** Google GenAI SDK (`@google/genai`)
-- **API Architecture:** Next.js Route Handlers with Server-Sent Events (SSE)
-- **Timeout Management:** Vercel Fluid dynamic max duration handling (up to 300 seconds for complex generations)
-- **Validation:** Zod (Schema validation), NPM registry validation (hallucinated package prevention)
-
-### Database, Auth & Security
-- **ORM:** Prisma Client 7.8
-- **Database:** PostgreSQL (via Supabase)
-- **Authentication:** Clerk
-- **Security:** Arcjet
-
----
-
-## 🗃️ Database Schema Overview
-
-The application utilizes Prisma to manage relations between Users and Workspaces.
-
-### `User` Model
-- Handles Clerk identity mapping (`clerkId`).
-- Tracks available `credits` (defaults to 10) and subscription `plan`.
-- Maintains profile metadata (`name`, `email`, `imageUrl`).
-
-### `Workspace` Model
-- Represents an individual project or chat session.
-- `userId` (Foreign Key referencing `User`).
-- `messages` (JSON array tracking the chat history for context).
-- `fileData` (JSON object holding the generated virtual file system and dependencies).
-
----
-
-## 🛠️ Project Structure
-
-```text
-├── actions/              # Next.js Server Actions (Database mutations & queries)
-│   ├── projects.ts       # Logic for fetching & deleting user projects
-│   └── workspace.ts      # Logic for workspace retrieval & file updates
-├── app/                  # Next.js 16 App Router Entry Point
-│   ├── (auth)/           # Clerk authentication routes (Sign In / Sign Up)
-│   ├── (main)/           # Primary application UI (Workspaces, Projects)
-│   ├── api/              # API Route Handlers
-│   │   ├── gen-ai-code/  # SSE Route handling Gemini interaction
-│   │   └── improve/      # SSE Route for refining code
-│   ├── layout.tsx        # Global Layout, Fonts, Providers
-│   └── page.tsx          # Landing / Entry Page
-├── components/           # Reusable React UI Components
-│   ├── ChatPanel.tsx     # Chat interface and message tracking
-│   ├── CodePanel.tsx     # Sandpack preview and code editor
-│   ├── WorkspaceClient.tsx # Wrapper coordinating chat and code panels
-│   └── ui/               # Shadcn UI primitives
-├── lib/                  # Utility functions and configurations
-│   ├── arcjet.ts         # Arcjet security configuration
-│   ├── prisma.ts         # Prisma client instantiation
-│   └── constants.ts      # App-wide constants (e.g., Credit costs)
-└── prisma/               # Database Modeling
-    └── schema.prisma     # Relational database schema
+```mermaid
+graph TD
+    User([User Browser]) -->|HTTP / SSE Request| NextApp[Next.js 16 App Router]
+    NextApp -->|Session Auth| Clerk[Clerk Auth Provider]
+    NextApp -->|Bot & Threat Check| Arcjet[Arcjet Security Engine]
+    NextApp -->|Stream Prompt & History| Gemini[Google Gemini 3.5 Flash]
+    NextApp -->|Validate NPM Packages| NPMRegistry[NPM Registry API]
+    NextApp -->|Atomic Transaction| Prisma[Prisma 7 ORM]
+    Prisma -->|PostgreSQL| Supabase[(Supabase DB)]
+    NextApp -->|Virtual File Tree| Sandpack[Sandpack Sandbox]
+    Sandpack -->|Live Preview Render| User
 ```
 
 ---
 
-## ⚙️ Environment Variables Setup
+## 🛠️ Tech Stack & Core Dependencies
 
-Before running the project locally, create a `.env` file in the root directory and populate it with the following keys. Refer to `.env.example` for defaults.
+| Layer | Technology | Version | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Framework** | Next.js | `16.2.10` | App Router, Server Actions, Dynamic Streaming |
+| **Frontend Library** | React / React DOM | `19.2.4` | React Concurrent Features & Modern Hooks |
+| **Runtime Engine** | Node.js | `>=22.12.0 <24.0.0` | Node 22 LTS compatibility for Prisma 7 |
+| **AI Model & SDK** | Google GenAI (`@google/genai`) | `2.12.0` | Streaming code generation via Gemini 3.5 Flash |
+| **Sandbox Execution** | Sandpack React & Themes | `2.20.0` / `2.0.21` | In-browser client execution engine |
+| **Database & ORM** | Prisma / Supabase | `7.8.0` / `2.110.6` | PostgreSQL relational database & client adapter |
+| **Authentication** | Clerk | `7.5.18` | User identity & route middleware security |
+| **Security Shield** | Arcjet | `1.8.0` | Bot detection, rate-limiting, prompt injection shield |
+| **Styling & Motion** | Tailwind CSS v4 / Framer Motion | `v4` / `12.42.2` | Utility-first styling & micro-animations |
+
+---
+
+## 📁 Project Directory Structure
+
+```text
+ai_website_builder_nextjs_16/
+├── actions/                         # Server Actions (Database mutations & queries)
+│   ├── projects.ts                  # Fetching, listing, and deleting user projects
+│   └── workspace.ts                 # Workspace retrieval and file update mutations
+├── app/                             # Next.js 16 App Router Entry Point
+│   ├── (auth)/                      # Clerk authentication routes (Sign In / Sign Up)
+│   │   ├── sign-in/[[...sign-in]]/  # Sign-in route handlers
+│   │   └── sign-up/[[...sign-up]]/  # Sign-up route handlers
+│   ├── (main)/                      # Main Application Area
+│   │   ├── projects/                # Dashboard listing user saved workspaces
+│   │   │   ├── loading.tsx          # Project grid skeleton loading handler
+│   │   │   └── page.tsx             # User projects grid page
+│   │   └── workspace/[id]/          # AI Workspace page
+│   │       ├── loading.tsx          # Instant workspace loading state
+│   │       └── page.tsx             # Workspace main layout view
+│   ├── api/                         # SSE & Utility API Route Handlers
+│   │   ├── gen-ai-code/             # SSE endpoint for initial workspace generation
+│   │   ├── improve/                 # SSE endpoint for iterative code edits
+│   │   └── health/                  # Healthcheck endpoint for Render / Uptime monitoring
+│   ├── global-error.tsx             # Global application error boundary
+│   ├── globals.css                  # Global styles & custom animations
+│   ├── layout.tsx                   # Root layout, theme providers, & Clerk provider
+│   ├── not-found.tsx                # Custom 404 page
+│   └── page.tsx                     # Redesigned Landing Page with demo preview & marquee
+├── components/                      # Reusable UI Components
+│   ├── ChatPanel.tsx                # AI Chat interface, message list, & thought chunks
+│   ├── CodePanel.tsx                # Sandpack editor & live browser preview toggle
+│   ├── Header.tsx                   # Main navigation header
+│   ├── MobileHeaderMenu.tsx         # Mobile drawer menu navigation
+│   ├── ProjectCard.tsx              # Project preview card with action triggers
+│   ├── WorkspaceClient.tsx          # Client state wrapper for Chat & Code panels
+│   ├── theme-provider.tsx           # Dark/light theme provider wrapper
+│   └── ui/                          # Primitive UI components (Shadcn / Base UI)
+├── lib/                             # Core Utilities & Configuration
+│   ├── arcjet.ts                    # Arcjet security rules configuration
+│   ├── constants.ts                 # Application constants (e.g. credit cost rules)
+│   ├── data.ts                      # Landing page mock dataset & prompts
+│   └── prisma.ts                    # Prisma Client initialization instance
+├── prisma/                          # Database Modeling & Migrations
+│   └── schema.prisma                # Relational User & Workspace schema
+├── proxy.ts                         # Custom Middleware proxy (Clerk & Arcjet guard)
+├── render.yaml                      # Render deployment configuration blueprint
+├── .node-version                    # Node engine specification (22.14.0)
+└── package.json                     # Node dependencies & build scripts
+```
+
+---
+
+## ⚙️ Environment Configuration
+
+Create a `.env` file in the project root directory using `.env.example` as a template:
 
 ```env
 # Clerk Authentication
@@ -124,137 +139,124 @@ CLERK_SECRET_KEY=sk_test_...
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 
-# Google Gemini API
+# Google Gemini AI API Key
 GEMINI_API_KEY=AIzaSy...
 
-# Database (Supabase / PostgreSQL)
+# Database URLs (Supabase / PostgreSQL)
+# DATABASE_URL uses pooled connection (pgbouncer=true)
 DATABASE_URL="postgresql://user:password@aws-0-region.pooler.supabase.com:6543/postgres?pgbouncer=true"
+# DIRECT_URL uses direct connection (for migrations)
 DIRECT_URL="postgresql://user:password@aws-0-region.pooler.supabase.com:5432/postgres"
 
-# Arcjet Security
+# Arcjet Security Key
 ARCJET_KEY=ajkey_...
+
+# Optional Subscription Plan IDs
+NEXT_PUBLIC_CLERK_STANDARD_PLAN_ID=cplan_...
+NEXT_PUBLIC_CLERK_PRO_PLAN_ID=cplan_...
 ```
 
 ---
 
-## 🚀 Getting Started Guide
+## 🚀 Getting Started
 
-### 1. Prerequisites
-Ensure you have the following installed:
-- Node.js (v20+ recommended)
-- npm or yarn or pnpm
-- A Supabase project (for the PostgreSQL database)
-- A Clerk application (for authentication)
-- Google Gemini API Key
+### 1. System Requirements
+- **Node.js:** `v22.12.0` or higher (v22.14.0 recommended)
+- **NPM / PNPM / Yarn:** Package manager of your choice
+- **PostgreSQL Database:** Supabase or local PostgreSQL instance
 
 ### 2. Installation
-Clone the repository and install all required dependencies:
 ```bash
+# Clone the repository
 git clone https://github.com/your-username/ai_website_builder_nextjs_16.git
+
+# Navigate into the project folder
 cd ai_website_builder_nextjs_16
+
+# Install dependencies
 npm install
 ```
 
 ### 3. Database Migration
-Generate the Prisma client and push the schema to your remote PostgreSQL database:
+Generate the Prisma Client and sync your relational database schema:
 ```bash
+# Generate Prisma Client (runs automatically on postinstall)
 npm run postinstall
+
+# Push database schema to PostgreSQL
 npx prisma db push
 ```
 
-### 4. Running the Development Server
-Start the Next.js development server:
+### 4. Run Development Server
 ```bash
 npm run dev
 ```
-
-Navigate your browser to [http://localhost:3000](http://localhost:3000) to experience the AI builder locally.
-
----
-
-## 📜 Available Scripts
-
-The `package.json` includes several scripts for development and deployment:
-
-- `npm run dev`: Starts the Next.js development server on port 3000.
-- `npm run build`: Creates an optimized production build of your application.
-- `npm run start`: Runs database migrations (`npx prisma migrate deploy`) and then starts the Next.js production server.
-- `npm run postinstall`: Generates the Prisma Client automatically after dependencies are installed.
-- `npm run lint`: Runs ESLint to statically analyze your code and find potential issues.
+Open [http://localhost:3000](http://localhost:3000) in your browser to start building.
 
 ---
 
-## 📡 Core API Endpoints
+## 📜 NPM Scripts Overview
 
-### `POST /api/gen-ai-code`
-- **Purpose:** Handles the core code generation loop.
-- **Flow:**
-  1. Authenticates user via Clerk and checks credit balance via Prisma.
-  2. Protects against prompt injections and bots using Arcjet.
-  3. Prepares context (previous messages, existing file states, images).
-  4. Streams the prompt to Gemini 3.5 Flash.
-  5. Emits real-time SSE updates (thought processes and status).
-  6. Validates hallucinated npm packages against the actual npm registry.
-  7. Deducts credits and saves the new Workspace to the database via an atomic transaction.
-
-### `POST /api/improve`
-- **Purpose:** A lighter endpoint designated for specifically refactoring or fixing bugs in existing workspaces.
+| Command | Action |
+| :--- | :--- |
+| `npm run dev` | Boots up Next.js 16 development server on `localhost:3000` |
+| `npm run build` | Enforces `NODE_ENV=production` and creates an optimized Next.js production build |
+| `npm start` | Executes `prisma migrate deploy` followed by starting the production server |
+| `npm run postinstall` | Automatically triggers `prisma generate` after package installs |
+| `npm run lint` | Runs ESLint validation across all TypeScript and React files |
 
 ---
 
-## 💳 Credit System Architecture
+## 📡 API Endpoint Reference
 
-To manage API usage and costs:
-- Every new user is initialized with **10 credits** via the Prisma Schema default.
-- Every successful AI code generation deducts `CREDIT_COST_PER_GENERATION` (configured in `lib/constants.ts`).
-- Transactions are **Atomic**: The database update that deducts the credit and saves the generated workspace happens in a single `db.$transaction`. If the AI fails, returns invalid JSON, or the connection breaks, the user is never charged.
+### 1. `POST /api/gen-ai-code`
+- **Description:** Generates new workspace components and files from user prompt.
+- **Workflow:**
+  1. Authenticates Clerk user session & verifies available credits.
+  2. Runs Arcjet threat detection & prompt injection check.
+  3. Sends request to Google Gemini 3.5 Flash.
+  4. Streams SSE event logs (`thought` chunks and code payload).
+  5. Validates NPM dependencies against registry.
+  6. Executes atomic database transaction to deduct credit and save Workspace.
 
----
+### 2. `POST /api/improve`
+- **Description:** Refines, fixes bugs, or updates existing workspace code files via iterative AI prompts.
 
-## 🛡️ Security Implementation Details
-
-Security is a first-class citizen in this architecture:
-- **Authentication Walls:** All API routes strictly verify Clerk sessions before invoking database or AI logic.
-- **Arcjet Protection:** The `aj.protect()` layer intercepts requests to prevent abuse. It specifically targets prompt injections (preventing malicious users from overriding the system prompt) and scrubs sensitive information.
-- **Database Access:** Server Actions are used extensively, preventing direct database exposure to the client. Ownership checks (`userId === session.userId`) are enforced on every read/write operation.
-
----
-
-## 🐛 Troubleshooting Common Issues
-
-**1. Prisma Client Errors on Vercel:**
-If you encounter `PrismaClientInitializationError` in production, ensure that your `DATABASE_URL` is using the pooled connection string (with `?pgbouncer=true`) and `DIRECT_URL` is using the non-pooled connection string.
-
-**2. Arcjet Blocking Requests Locally:**
-If Arcjet blocks you during local development, ensure your `ARCJET_KEY` is configured for development mode. Check your Arcjet dashboard to whitelist your local IP if necessary.
-
-**3. Sandpack Previews Not Updating:**
-Because Sandpack caches dependencies heavily in the browser, if an injected npm package is failing to load, try doing a hard refresh in your browser or clear local storage.
-
-**4. AI Returning "Invalid JSON" errors:**
-The prompt strictly enforces a JSON response format. If the request exceeds max tokens, the JSON might become malformed. The platform catches this and emits an error event *without deducting user credits*. Try breaking down the prompt into smaller, iterative steps.
+### 3. `GET /api/health`
+- **Description:** Lightweight health monitoring endpoint returning system status `200 OK` for uptime monitors (e.g. Render keep-alive cron jobs).
 
 ---
 
-## ☁️ Deployment
+## ☁️ Deployment Guide
 
-The application is fully optimized for deployment on Vercel.
+### Deploying to Render
+1. Connect your repository to **Render**.
+2. Render automatically detects `render.yaml` blueprint.
+3. Node engine is pinned via `.node-version` (`22.14.0`).
+4. Health checks run against `/api/health`.
+5. Set required secret environment variables (`GEMINI_API_KEY`, `DATABASE_URL`, `CLERK_SECRET_KEY`, `ARCJET_KEY`) in the Render Dashboard.
 
-1. Connect your GitHub repository to Vercel.
-2. Inject all required Environment Variables into the Vercel dashboard.
-3. Ensure the Build Command is set to `npm run build`.
-4. Deploy!
-
-Because it uses Next.js App Router and Prisma, it's highly recommended to utilize connection pooling (`pgbouncer=true` in `DATABASE_URL`) to manage Vercel Serverless scaling efficiently.
+### Deploying to Vercel
+1. Import repository into **Vercel**.
+2. Configure Environment Variables in the project settings.
+3. Ensure `DATABASE_URL` uses the pooled connection string (`pgbouncer=true`).
+4. Set Build Command to `npm run build`.
+5. Deploy!
 
 ---
 
-## 🤝 Contributing & Feedback
+## 🤝 Contributing
 
-Contributions are highly welcomed! Whether it's adding a new UI feature, optimizing the Gemini prompts, or improving the Sandpack integration, your pull requests are appreciated.
+Contributions, issues, and feature requests are welcome! Feel free to check out the repository issues page.
 
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/amazing-feature`).
-3. Commit your changes.
-4. Push to the branch.
-5. Open a Pull Request.
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git checkout -b feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+This project is open-source and available under the [MIT License](LICENSE).
