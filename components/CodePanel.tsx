@@ -255,40 +255,61 @@ function SandpackInner({
                 name: "zephyre-app",
                 version: "1.0.0",
                 private: true,
+                type: "module",
+                scripts: {
+                    dev: "vite",
+                    build: "vite build",
+                    preview: "vite preview",
+                },
                 dependencies: {
-                    react: "^18.2.0",
-                    "react-dom": "^18.2.0",
-                    "react-scripts": "5.0.1",
+                    react: "^18.3.1",
+                    "react-dom": "^18.3.1",
                     ...dependencies,
                 },
-                scripts: {
-                    start: "react-scripts start",
-                    build: "react-scripts build",
-                },
-                browserslist: {
-                    production: [">0.2%", "not dead", "not op_mini all"],
-                    development: ["last 1 chrome version"],
+                devDependencies: {
+                    "@vitejs/plugin-react": "^4.3.4",
+                    vite: "^6.0.0",
                 },
             };
             zip.file("package.json", JSON.stringify(packageJson, null, 2));
 
             zip.file(
-                "public/index.html",
+                "vite.config.js",
+                `import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 3000,
+    open: true,
+  },
+});
+`
+            );
+
+            zip.file(
+                "index.html",
                 `<!DOCTYPE html>
-                <html lang="en">
-                <head>
-                    <meta charset="utf-8" />
-                    <meta name="viewport" content="width=device-width, initial-scale=1" />
-                    <title>Zephyre App</title>
-                    <script src="https://cdn.tailwindcss.com"></script>
-                </head>
-                <body>
-                    <div id="root"></div>
-                </body>
-                </html>`
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${appTitle ? appTitle.replace(/</g, "&lt;").replace(/>/g, "&gt;") : "Zephyre App"}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>`
             );
 
             for (const [filePath, fileObj] of Object.entries(filesToZip)) {
+                // Avoid overwriting Vite's entry points
+                if (filePath === "/index.js" || filePath === "/main.jsx" || filePath === "/index.html") {
+                    continue;
+                }
                 const code =
                     typeof fileObj === "object" && fileObj !== null && "code" in fileObj
                         ? (fileObj as { code: string }).code
@@ -299,19 +320,28 @@ function SandpackInner({
                 zip.file(zipPath, code);
             }
 
+            const hasAppJsx = Object.keys(filesToZip).some(
+                (f) => f === "/App.jsx" || f === "App.jsx"
+            );
+            const appImport = hasAppJsx ? "./App.jsx" : "./App";
+
             zip.file(
-                "src/index.js",
+                "src/main.jsx",
                 `import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+import App from '${appImport}';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<React.StrictMode><App /></React.StrictMode>);`
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);`
             );
 
             zip.file(
                 "README.md",
-                "# Zephyre App\n\nGenerated with [Zephyre](https://zephyre.app).\n\n## Getting started\n\n\`\`\`bash\nnpm install\nnpm start\n\`\`\`"
+                `# ${appTitle || "Zephyre App"}\n\nGenerated with [Zephyre](https://zephyre.app).\n\n## Getting started\n\n\`\`\`bash\nnpm install\nnpm run dev\n\`\`\`\n\n## Production build\n\n\`\`\`bash\nnpm run build\n\`\`\`\n`
             );
 
             const blob = await zip.generateAsync({ type: "blob" });
