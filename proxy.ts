@@ -27,7 +27,7 @@ const aj = arcjet({
 
 export default clerkMiddleware(async (auth, req) => {
     // Allow external cron pings to health check without Arcjet bot blocking
-    if (req.nextUrl.pathname === "/api/health") {
+    if (req.nextUrl.pathname.startsWith("/api/health")) {
         return NextResponse.next();
     }
 

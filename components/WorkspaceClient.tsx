@@ -85,6 +85,9 @@ export function WorkspaceClient({
     const generateAbortRef = useRef<AbortController | null>(null);
     const improveAbortRef = useRef<AbortController | null>(null);
 
+    // Track whether fileData was modified manually by the user (prevents auto-save spam on mount)
+    const isManualEditRef = useRef(false);
+
 
     // Refs to avoid stale closures in callbacks
     const messagesRef = useRef<Message[]>(messages);
@@ -105,7 +108,7 @@ export function WorkspaceClient({
         fileDataRef.current = fileData;
     }, [fileData]);
 
-    // Auto-save manual edits to the database
+    // Auto-save manual edits to the database (only when user actively typed in editor)
     useEffect(() => {
         // If there's no workspaceId, it hasn't been created yet (first prompt pending).
         if (!workspaceId || !fileData) return;
@@ -114,10 +117,17 @@ export function WorkspaceClient({
         // route itself handles saving the final result.
         if (isGenerating || isImproving) return;
 
+        // Only save if the user actually made manual edits in the code editor
+        if (!isManualEditRef.current) return;
+
         const timeout = setTimeout(() => {
-            updateWorkspaceFileData(workspaceId, userId, fileData).catch((err) => {
-                console.error("Auto-save failed:", err);
-            });
+            updateWorkspaceFileData(workspaceId, userId, fileData)
+                .then(() => {
+                    isManualEditRef.current = false;
+                })
+                .catch((err) => {
+                    console.error("Auto-save failed:", err);
+                });
         }, 3000); // 3 seconds of inactivity
 
         return () => clearTimeout(timeout);
@@ -419,6 +429,7 @@ export function WorkspaceClient({
     }, []);
 
     const handleFilePatch = useCallback((patches: FileData) => {
+        isManualEditRef.current = true;
         setFileData((prev) => {
             if (!prev) return patches;
             return {

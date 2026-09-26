@@ -24,10 +24,12 @@ import { toast } from "sonner";
 
 
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+function getSupabaseClient() {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) return null;
+    return createClient(url, key);
+}
 
 
 
@@ -118,9 +120,26 @@ export function ChatPanel({
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file || !file.type.startsWith("image/")) return;
+
+        // Enforce 5MB upload limit
+        const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+        if (file.size > MAX_FILE_SIZE) {
+            toast.error("Image file is too large (maximum size is 5MB)");
+            if (fileRef.current) fileRef.current.value = "";
+            return;
+        }
+
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            toast.error("Image storage is not configured. Please check Supabase credentials.");
+            if (fileRef.current) fileRef.current.value = "";
+            return;
+        }
+
         setIsUploading(true);
         try {
-            const ext = file.name.split(".").pop();
+            const rawExt = file.name.split(".").pop() || "png";
+            const ext = rawExt.toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
             // Path: userId/workspaceId/timestamp.ext
             // workspaceId may be "new" before first generation
             const path = `${userId}/${workspaceId ?? "new"}/${Date.now()}.${ext}`;
@@ -137,7 +156,7 @@ export function ChatPanel({
             setPendingImageUrl(data.publicUrl);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            toast.error(message)
+            toast.error(message);
         } finally {
             setIsUploading(false);
             if (fileRef.current) fileRef.current.value = "";
