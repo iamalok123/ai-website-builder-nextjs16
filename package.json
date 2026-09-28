@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node ./scripts/build.mjs",
     "start": "prisma migrate deploy && next start -H 0.0.0.0",
     "postinstall": "prisma generate",
     "lint": "eslint"

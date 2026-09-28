@@ -4,11 +4,13 @@ services:
     env: node
     plan: starter
     healthCheckPath: /api/health
-    buildCommand: npm install && npm run build
+    buildCommand: npm install && NODE_ENV=production npm run build
     startCommand: npm start
     envVars:
       - key: NODE_VERSION
         value: 22.14.0
+      - key: NODE_ENV
+        value: production
       - key: ARCJET_ENV
         value: production
       - key: NEXT_PUBLIC_CLERK_SIGN_IN_URL
