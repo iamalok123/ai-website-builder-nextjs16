@@ -29,7 +29,7 @@ import { FAQS, PLACEHOLDERS, STEPS, SUGGESTIONS } from "@/lib/data";
 import { PRICING_PLANS } from "@/lib/constants";
 
 export default function Home() {
-  const { isSignedIn, has } = useAuth();
+  const { isSignedIn, isLoaded, has } = useAuth();
   const router = useRouter();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -145,6 +145,14 @@ export default function Home() {
                       onClick={handleSubmit}
                       disabled={!prompt.trim()}
                       className="w-full sm:w-auto h-10 rounded-xl px-5 sm:px-6 text-xs sm:text-sm font-semibold bg-linear-to-r from-amber-500 via-orange-500 to-red-500 hover:brightness-110 text-white shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 border-0"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Generate
+                    </Button>
+                  ) : !isLoaded ? (
+                    <Button
+                      disabled
+                      className="w-full sm:w-auto h-10 rounded-xl px-5 sm:px-6 text-xs sm:text-sm font-semibold bg-linear-to-r from-amber-500/50 via-orange-500/50 to-red-500/50 text-white shadow-lg opacity-70 border-0 cursor-wait flex items-center justify-center gap-2"
                     >
                       <Sparkles className="h-4 w-4" />
                       Generate
@@ -678,6 +686,14 @@ export default function Home() {
                       >
                         ✓ Current plan
                       </Button>
+                    ) : !isLoaded ? (
+                      <Button
+                        disabled
+                        className="w-full h-11 rounded-xl text-xs font-semibold opacity-50 cursor-wait border border-zinc-800 bg-transparent text-zinc-400"
+                        variant="ghost"
+                      >
+                        Loading...
+                      </Button>
                     ) : plan.price === 0 ? (
                       isSignedIn ? (
                         <Button
@@ -875,6 +891,15 @@ export default function Home() {
                     size="lg"
                     onClick={() => router.push("/workspace")}
                     className="h-12 rounded-xl bg-linear-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm px-7 shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2 border-0"
+                  >
+                    Get Started
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                ) : !isLoaded ? (
+                  <Button
+                    size="lg"
+                    disabled
+                    className="h-12 rounded-xl bg-linear-to-r from-orange-500/50 via-amber-500/50 to-orange-600/50 text-white font-bold text-sm px-7 shadow-lg opacity-70 border-0 cursor-wait flex items-center justify-center gap-2"
                   >
                     Get Started
                     <ChevronRight className="h-4 w-4" />

@@ -9,7 +9,6 @@ import { Toaster } from "sonner";
 const lora = Lora({
   subsets: ["latin"],
   weight: ["400", "500"],
-  style: ["normal", "italic"],
   variable: "--font-serif",
 });
 

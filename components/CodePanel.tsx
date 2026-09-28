@@ -375,10 +375,10 @@ root.render(
         <Tabs
             value={activeTab}
             onValueChange={(v) => setActiveTab(v as ActiveTab)}
-            className="flex h-full flex-col gap-0"
+            className="relative flex h-full w-full flex-col gap-0 min-h-0 overflow-hidden"
         >
             {/* Tabs + Actions bar */}
-            <div className="flex items-center justify-between border-b border-white/6 px-2">
+            <div className="flex h-11 shrink-0 items-center justify-between border-b border-white/6 px-2.5 bg-[#0d0d0d]">
                 <TabsList
                     variant="line"
                     className="h-auto gap-0 rounded-none bg-transparent p-0"
@@ -488,7 +488,7 @@ root.render(
 
 
             {/* Content area */}
-            <div className="relative flex-1 overflow-hidden h-full">
+            <div className="relative flex-1 min-h-0 w-full overflow-hidden bg-[#0a0a0a] flex flex-col">
 
                 {/* Loading Overlay */}
                 {(isGenerating || isImproving) && (
@@ -507,8 +507,11 @@ root.render(
 
 
                 <SandpackLayout
+                    className="h-full! w-full! border-none! rounded-none! bg-transparent! flex! flex-col! min-h-0! flex-1!"
                     style={{
-                        height: "100vh",
+                        height: "100%",
+                        minHeight: "100%",
+                        width: "100%",
                         border: "none",
                         borderRadius: 0,
                         background: "transparent",
@@ -519,10 +522,11 @@ root.render(
                     <TabsContent
                         value="preview"
                         keepMounted // Kept mounted so it won't change state when we move to code tab, it will clear the state if not kept mounted
-                        className="mt-0 h-full w-full"
+                        className="mt-0 h-full w-full min-h-0 overflow-hidden relative flex flex-col flex-1 [hidden]:hidden!"
                     >
                         <SandpackPreview
-                            style={{ height: "89%" }}
+                            style={{ height: "100%", minHeight: "100%", width: "100%" }}
+                            className="h-full! w-full! flex! flex-col! flex-1! min-h-0!"
                             showOpenInCodeSandbox={false}
                         />
                     </TabsContent>
@@ -533,17 +537,18 @@ root.render(
                     <TabsContent
                         value="code"
                         keepMounted
-                        className="mt-0 flex h-full w-full"
+                        className="mt-0 flex h-full w-full min-h-0 overflow-hidden [hidden]:hidden!"
                     >
                         <SandpackFileExplorer
                             style={{
-                                height: "90%",
+                                height: "100%",
                                 width: "180px",
                                 borderRight: "0.5px solid rgba(255,255,255,0.08)",
                             }}
                         />
                         <SandpackCodeEditor
-                            style={{ height: "90%", flex: 1 }}
+                            style={{ height: "100%", flex: 1 }}
+                            className="h-full flex-1 min-w-0"
                             showTabs
                             showLineNumbers
                             showInlineErrors
@@ -560,20 +565,22 @@ root.render(
                 !isGenerating &&
                 !isImproving &&
                 activeTab === "preview" && (
-                    <div className="absolute inset-x-0 -bottom-3 z-20 border-t border-red-500/20 bg-red-950/99 p-4 pb-6">
+                    <div className="absolute inset-x-0 bottom-0 z-20 border-t border-red-500/20 bg-red-950/95 p-3 backdrop-blur-md shadow-lg">
                         <div className="flex items-center gap-2.5">
-                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400/70" />
+                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
                             <div className="min-w-0 flex-1">
-                                <p className="text-xs font-medium text-red-400/80">
+                                <p className="text-xs font-semibold text-red-300">
                                     Preview error
                                 </p>
-                                <p className="break-all text-[11px] text-red-300/50">
+                                <p className="line-clamp-2 break-all text-[11px] text-red-300/80">
                                     {previewError}
                                 </p>
                             </div>
                             <Button
                                 onClick={() => onFixError(previewError)}
                                 variant="destructive"
+                                size="sm"
+                                className="shrink-0 gap-1.5 h-7 text-xs font-medium bg-red-600 hover:bg-red-700 text-white border-0 shadow-sm"
                             >
                                 <Bot className="h-3 w-3" />
                                 Fix with AI
@@ -644,12 +651,21 @@ export function CodePanel({
     const filePathKey = Object.keys(files).sort().join("|");
 
     return (
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <SandpackProvider
                 key={filePathKey}
                 template="react"
                 theme={amethyst}
                 files={files}
+                className="h-full! w-full! flex! flex-col! flex-1! min-h-0!"
+                style={{
+                    height: "100%",
+                    width: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    flex: 1,
+                    minHeight: 0,
+                }}
                 customSetup={{ dependencies }}
                 options={{
                     activeFile: files["/App.jsx"] ? "/App.jsx" : "/App.js",

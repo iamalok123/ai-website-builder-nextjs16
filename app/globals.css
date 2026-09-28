@@ -177,3 +177,135 @@
 .marquee-group:hover .animate-marquee-scroll-reverse {
   animation-play-state: paused;
 }
+
+/* Sandpack layout & full height overrides */
+:root {
+  --sp-layout-height: 100% !important;
+}
+
+.sp-wrapper,
+div[class*="sp-wrapper"] {
+  height: 100% !important;
+  min-height: 100% !important;
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+  flex: 1 1 0% !important;
+  overflow: hidden !important;
+  --sp-layout-height: 100% !important;
+}
+
+.sp-layout,
+div[class*="sp-layout"] {
+  height: 100% !important;
+  min-height: 100% !important;
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+  flex: 1 1 0% !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  overflow: hidden !important;
+  --sp-layout-height: 100% !important;
+}
+
+.sp-stack,
+div[class*="sp-stack"] {
+  height: 100% !important;
+  min-height: 100% !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  flex: 1 1 0% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.sp-preview,
+div[class*="sp-preview"] {
+  height: 100% !important;
+  min-height: 100% !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  flex: 1 1 0% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: #ffffff !important;
+  overflow: hidden !important;
+  position: relative !important;
+}
+
+.sp-preview-container,
+div[class*="preview-container"] {
+  height: 100% !important;
+  min-height: 100% !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  flex: 1 1 0% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  position: relative !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+  touch-action: pan-y !important;
+  background: #ffffff !important;
+}
+
+.sp-preview-iframe,
+iframe[title="Sandpack Preview"],
+iframe[class*="preview-iframe"] {
+  width: 100% !important;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  flex: 1 0 auto !important;
+  border: none !important;
+  display: block !important;
+  touch-action: auto !important;
+}
+
+.sp-preview-actions,
+div[class*="preview-actions"] {
+  position: sticky !important;
+  bottom: 12px !important;
+  margin-top: -42px !important;
+  margin-left: auto !important;
+  margin-right: 12px !important;
+  align-self: flex-end !important;
+  z-index: 20 !important;
+  pointer-events: auto !important;
+}
+
+.sp-code-editor,
+div[class*="code-editor"] {
+  height: 100% !important;
+  min-height: 100% !important;
+  flex: 1 1 0% !important;
+  overflow: hidden !important;
+}
+
+.sp-file-explorer,
+div[class*="file-explorer"] {
+  height: 100% !important;
+  min-height: 100% !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.cm-editor {
+  height: 100% !important;
+}
+
+.cm-scroller {
+  overflow: auto !important;
+  height: 100% !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.sp-tabs {
+  border-radius: 0 !important;
+}

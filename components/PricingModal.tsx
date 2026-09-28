@@ -46,7 +46,7 @@ export function PricingModal({
     children,
     reason = "upgrade",
 }: PricingModalProps) {
-    const { isSignedIn, has } = useSafeAuth();
+    const { isSignedIn, isLoaded, has } = useSafeAuth();
 
     const title =
         reason === "credits" ? "You're out of credits" : "Upgrade your plan";
@@ -175,6 +175,14 @@ export function PricingModal({
                                             variant="ghost"
                                         >
                                             ✓ Current plan
+                                        </Button>
+                                    ) : !isLoaded ? (
+                                        <Button
+                                            disabled
+                                            className="w-full rounded-full text-sm font-semibold opacity-50 cursor-wait border border-white/10 bg-transparent text-white/60"
+                                            variant="ghost"
+                                        >
+                                            Loading...
                                         </Button>
                                     ) : plan.price === 0 ? (
                                         isSignedIn ? (

@@ -200,7 +200,7 @@ export function ChatPanel({
             {/* Messages */}
             <div
                 ref={scrollContainerRef}
-                className="flex-1 overflow-y-auto px-3 py-4 [&::-webkit-scrollbar]:hidden"
+                className="flex-1 min-h-0 overflow-y-auto px-3 py-4 overscroll-contain [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
             >
                 {messages.length === 0 && !isGenerating && (
                     <div className="flex h-full items-center justify-center">
@@ -368,7 +368,7 @@ export function ChatPanel({
             )}
 
             {/* Input */}
-            <div className="border-t border-white/6 p-3">
+            <div className="border-t border-white/6 p-3 shrink-0 bg-[#0d0d0d]">
 
                 {/* Upload Image Placeholder */}
                 {pendingImageUrl && (

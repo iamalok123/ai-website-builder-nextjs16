@@ -1,12 +1,21 @@
+'use client'
+
 import { Show, SignInButton, SignUpButton, UserButton } from '@clerk/nextjs'
 import Image from 'next/image'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import React from 'react'
 import { Button } from './ui/button'
 import { UserCreditBadge } from './UserCreditBadge'
 import { MobileHeaderMenu } from './MobileHeaderMenu'
 
 const Header = () => {
+    const pathname = usePathname();
+
+    if (pathname?.startsWith('/workspace')) {
+        return null;
+    }
+
     return (
         <header className='fixed w-full top-3 sm:top-4 inset-x-0 z-50 px-3 sm:px-6 lg:px-8 pointer-events-none'>
             <nav className='relative mx-auto flex h-14 sm:h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8 rounded-2xl border border-white/12 bg-[#08090e]/85 backdrop-blur-2xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] pointer-events-auto transition-all duration-300 hover:border-white/20'>

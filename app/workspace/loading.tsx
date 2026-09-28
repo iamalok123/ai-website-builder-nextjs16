@@ -2,7 +2,7 @@ import { Zap, Loader2, Code2, Eye, Sparkles } from "lucide-react";
 
 export default function WorkspaceLoading() {
     return (
-        <div className="relative flex h-[calc(100vh-4rem)] w-full overflow-hidden bg-[#0a0a0a] text-white">
+        <div className="relative flex h-screen w-full overflow-hidden bg-[#0a0a0a] text-white">
             {/* Ambient Background Spotlights */}
             <div className="fixed top-12 left-1/3 -translate-x-1/2 h-96 w-96 rounded-full bg-purple-600/10 blur-[140px] pointer-events-none" />
             <div className="fixed bottom-12 right-1/3 h-96 w-96 rounded-full bg-indigo-500/10 blur-[140px] pointer-events-none" />

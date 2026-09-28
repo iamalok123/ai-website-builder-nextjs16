@@ -17,7 +17,7 @@ export default function WorkspaceError({ error, reset }: WorkspaceErrorProps) {
     }, [error]);
 
     return (
-        <div className="flex min-h-[calc(100vh-4rem)] w-full items-center justify-center p-4 sm:p-6 bg-black text-white selection:bg-orange-500/30 selection:text-orange-200">
+        <div className="flex min-h-screen w-full items-center justify-center p-4 sm:p-6 bg-black text-white selection:bg-orange-500/30 selection:text-orange-200">
             {/* Ambient Background Glow */}
             <div className="fixed top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 h-80 w-80 rounded-full bg-orange-600/15 blur-[120px] pointer-events-none" />
 
