@@ -26,22 +26,25 @@ function HexagonBackground({
   const oddRowMarginLeft = -(hexagonSize / 2);
   const evenRowMarginLeft = hexagonMargin / 2;
 
-  const [gridDimensions, setGridDimensions] = React.useState({
-    rows: 0,
-    columns: 0,
-  });
+  const subscribe = React.useCallback((callback: () => void) => {
+    window.addEventListener('resize', callback);
+    return () => window.removeEventListener('resize', callback);
+  }, []);
 
-  const updateGridDimensions = React.useCallback(() => {
-    const rows = Math.ceil(window.innerHeight / rowSpacing);
-    const columns = Math.ceil(window.innerWidth / hexagonWidth) + 1;
-    setGridDimensions({ rows, columns });
+  const getSnapshot = React.useCallback(() => {
+    if (typeof window === 'undefined') return '0x0';
+    const r = Math.ceil(window.innerHeight / rowSpacing);
+    const c = Math.ceil(window.innerWidth / hexagonWidth) + 1;
+    return `${r}x${c}`;
   }, [rowSpacing, hexagonWidth]);
 
-  React.useEffect(() => {
-    updateGridDimensions();
-    window.addEventListener('resize', updateGridDimensions);
-    return () => window.removeEventListener('resize', updateGridDimensions);
-  }, [updateGridDimensions]);
+  const getServerSnapshot = React.useCallback(() => '0x0', []);
+
+  const dimensionsStr = React.useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const [rows, columns] = React.useMemo(() => {
+    const [r, c] = dimensionsStr.split('x').map(Number);
+    return [r || 0, c || 0];
+  }, [dimensionsStr]);
 
   return (
     <div
@@ -54,7 +57,7 @@ function HexagonBackground({
     >
       <style>{`:root { --hexagon-margin: ${hexagonMargin}px; }`}</style>
       <div className="absolute top-0 left-0 size-full overflow-hidden">
-        {Array.from({ length: gridDimensions.rows }).map((_, rowIndex) => (
+        {Array.from({ length: rows }).map((_, rowIndex) => (
           <div
             key={`row-${rowIndex}`}
             style={{
@@ -66,7 +69,7 @@ function HexagonBackground({
             }}
             className="inline-flex"
           >
-            {Array.from({ length: gridDimensions.columns }).map(
+            {Array.from({ length: columns }).map(
               (_, colIndex) => (
                 <div
                   key={`hexagon-${rowIndex}-${colIndex}`}

@@ -53,12 +53,20 @@ export const checkUser = async () => {
             return existing;
         }
 
+        const name =
+            `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() ||
+            user.username ||
+            "User";
+        const email =
+            user.emailAddresses?.[0]?.emailAddress ||
+            `${user.id}@clerk.local`;
+
         // New user — create with free plan credits
         return await db.user.create({
             data: {
                 clerkId: user.id,
-                name: `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim(),
-                email: user.emailAddresses[0].emailAddress,
+                name,
+                email,
                 imageUrl: user.imageUrl ?? "",
                 credits: PLANS.free.credits,
                 plan: "free",
@@ -66,6 +74,11 @@ export const checkUser = async () => {
         });
     } catch (error) {
         console.error("checkUser error:", error);
-        return null;
+        // Resilient fallback: If user was created concurrently, fetch and return it
+        try {
+            return await db.user.findUnique({ where: { clerkId: user.id } });
+        } catch {
+            return null;
+        }
     }
 };

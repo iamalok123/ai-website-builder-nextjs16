@@ -1,4 +1,4 @@
-import { LayoutGrid, PlusCircle } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
 
 export default function ProjectsLoading() {
     return (

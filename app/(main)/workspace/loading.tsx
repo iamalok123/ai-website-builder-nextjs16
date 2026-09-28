@@ -1,4 +1,4 @@
-import { Zap, Loader2, Code2, Eye, Sparkles, MessageSquare } from "lucide-react";
+import { Zap, Loader2, Code2, Eye, Sparkles } from "lucide-react";
 
 export default function WorkspaceLoading() {
     return (

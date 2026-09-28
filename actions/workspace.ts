@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/prisma";
+import { checkUser } from "@/lib/checkUser";
 import type { WorkspaceUser, WorkspaceData, FileData } from "@/types/workspace";
 
 
@@ -19,10 +20,18 @@ export async function getWorkspaceUser(): Promise<WorkspaceUser> {
     const { userId: clerkId } = await auth();
     if (!clerkId) redirect("/");
 
-    const user = await db.user.findUnique({
+    let user = await db.user.findUnique({
         where: { clerkId },
         select: { id: true, credits: true, plan: true },
     });
+
+    if (!user) {
+        // Auto-provision via checkUser() to guarantee synchronization
+        const synced = await checkUser();
+        if (synced) {
+            user = { id: synced.id, credits: synced.credits, plan: synced.plan };
+        }
+    }
 
     if (!user) redirect("/");
 
@@ -50,7 +59,7 @@ export async function getWorkspaceById(
         },
     });
 
-    if (!workspace) redirect("/");
+    if (!workspace) redirect("/projects");
 
     return workspace;
 }
@@ -80,7 +89,7 @@ export async function updateWorkspaceFileData(
     try {
         await db.workspace.update({
             where: { id: workspaceId, userId },
-            data: { fileData: fileData as any },
+            data: { fileData: fileData as never },
         });
         revalidatePath("/projects");
     } catch (e) {

@@ -36,9 +36,6 @@ export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
-  const [isShuffled, setIsShuffled] = useState(false);
-  const [mouseOffset, setMouseOffset] = useState({ x: 0, y: 0 });
-  const [hoveredFeatureCard, setHoveredFeatureCard] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   // placeholder effect
@@ -75,21 +72,6 @@ export default function Home() {
   const handleSuggestion = (s: string) => {
     setPrompt(s);
     textareaRef.current?.focus();
-  };
-
-  const handleShuffleCards = () => {
-    setIsShuffled((prev) => !prev);
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left - rect.width / 2) / (rect.width / 2);
-    const y = (e.clientY - rect.top - rect.height / 2) / (rect.height / 2);
-    setMouseOffset({ x, y });
-  };
-
-  const handleMouseLeave = () => {
-    setMouseOffset({ x: 0, y: 0 });
   };
 
   return (
@@ -147,7 +129,7 @@ export default function Home() {
                   onKeyDown={handleKeyDown}
                   onFocus={() => setIsFocused(true)}
                   onBlur={() => setIsFocused(false)}
-                  placeholder="Describe a company in a sentence or two..."
+                  placeholder={PLACEHOLDERS[placeholderIndex] || "Describe a company in a sentence or two..."}
                   rows={1}
                   className="w-full resize-none bg-transparent px-1 sm:px-2 text-xs sm:text-base placeholder:text-zinc-500 text-white focus:outline-none"
                   style={{ minHeight: 48, maxHeight: 180 }}

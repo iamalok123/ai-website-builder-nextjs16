@@ -279,7 +279,6 @@ export function WorkspaceClient({
                 setStatusLog([]);
             }
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps
         [credits, isGenerating, userId]
         // fileData intentionally omitted — read via fileDataRef
     );
@@ -418,7 +417,6 @@ export function WorkspaceClient({
             }
         },
         // fileData intentionally omitted — read via fileDataRef above
-        // eslint-disable-next-line react-hooks/exhaustive-deps
         [credits, isGenerating, isImproving, userId]
     );
 

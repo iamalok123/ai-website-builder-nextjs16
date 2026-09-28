@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/prisma";
+import { checkUser } from "@/lib/checkUser";
 import type { ProjectSummary } from "@/types/project";
 
 export type { ProjectSummary } from "@/types/project";
@@ -14,7 +15,7 @@ export async function getUserProjects(): Promise<ProjectSummary[]> {
     const { userId: clerkId } = await auth();
     if (!clerkId) redirect("/");
 
-    const userWithWorkspaces = await db.user.findUnique({
+    let userWithWorkspaces = await db.user.findUnique({
         where: { clerkId },
         select: {
             workspaces: {
@@ -30,7 +31,28 @@ export async function getUserProjects(): Promise<ProjectSummary[]> {
         },
     });
 
-    if (!userWithWorkspaces) redirect("/");
+    if (!userWithWorkspaces) {
+        // User record may not exist yet in DB; auto-provision
+        await checkUser();
+        userWithWorkspaces = await db.user.findUnique({
+            where: { clerkId },
+            select: {
+                workspaces: {
+                    select: {
+                        id: true,
+                        title: true,
+                        createdAt: true,
+                        updatedAt: true,
+                        messages: true,
+                    },
+                    orderBy: { updatedAt: "desc" },
+                },
+            },
+        });
+    }
+
+    // Return empty array if user has no workspaces (renders EmptyState component cleanly)
+    if (!userWithWorkspaces?.workspaces) return [];
 
     const workspaces = userWithWorkspaces.workspaces;
 
@@ -60,10 +82,14 @@ export async function deleteProject(workspaceId: string): Promise<void> {
     const { userId: clerkId } = await auth();
     if (!clerkId) redirect("/");
 
-    const user = await db.user.findUnique({
+    let user = await db.user.findUnique({
         where: { clerkId },
         select: { id: true },
     });
+    if (!user) {
+        const synced = await checkUser();
+        if (synced) user = { id: synced.id };
+    }
     if (!user) redirect("/");
 
     await db.workspace.deleteMany({

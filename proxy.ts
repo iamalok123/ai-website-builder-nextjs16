@@ -1,12 +1,6 @@
 import arcjet, { detectBot, shield } from "@arcjet/next";
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-
-
-const isProtectedRoute = createRouteMatcher([
-    "/workspace(.*)",
-    "/projects(.*)",
-]);
 
 
 // Global Arcjet client 
@@ -38,11 +32,12 @@ export default clerkMiddleware(async (auth, req) => {
         }
     }
 
-    // Clerk auth guard — redirect unauthenticated users away from /workspace
-    const { userId } = await auth();
+    // Clerk auth guard — redirect unauthenticated users away from /workspace and /projects
+    const { userId, redirectToSignIn } = await auth();
+    const pathname = req.nextUrl.pathname;
+    const isProtected = pathname.startsWith("/workspace") || pathname.startsWith("/projects");
 
-    if (!userId && isProtectedRoute(req)) {
-        const { redirectToSignIn } = await auth();
+    if (!userId && isProtected) {
         return redirectToSignIn();
     }
 

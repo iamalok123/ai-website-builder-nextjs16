@@ -185,12 +185,20 @@ function SandpackInner({
                 }
             }
             if (hasChanges) {
-                onFilePatch({ files: currentSandpackFiles as any } as any);
+                const formattedFiles: Record<string, { code: string }> = {};
+                for (const [k, v] of Object.entries(currentSandpackFiles)) {
+                    formattedFiles[k] = { code: typeof v === "string" ? v : v.code };
+                }
+                onFilePatch({
+                    files: formattedFiles,
+                    dependencies: fileData?.dependencies ?? {},
+                    title: fileData?.title,
+                });
             }
         }, 1000);
 
         return () => clearTimeout(timeout);
-    }, [sandpack.files, onFilePatch]);
+    }, [sandpack.files, onFilePatch, fileData?.dependencies, fileData?.title]);
 
     // Listen for Sandpack runtime errors
     useEffect(() => {
@@ -221,10 +229,6 @@ function SandpackInner({
         });
         return () => unsubscribeRef.current?.();
     }, [listen]);
-
-    useEffect(() => {
-        if (isGenerating) setPreviewError(null);
-    }, [isGenerating]);
 
     const handleImproveSubmit = async () => {
         const trimmed = improveInput.trim();
@@ -607,12 +611,8 @@ export function CodePanel({
 }: CodePanelProps) {
     const [activeTab, setActiveTab] = useState<ActiveTab>("preview");
 
-    useEffect(() => {
-        if (fileData) setActiveTab("preview");
-    }, [fileData]);
-
-    const rawFiles = fileData?.files ?? PLACEHOLDER_FILES;
     const files = useMemo(() => {
+        const rawFiles = fileData?.files ?? PLACEHOLDER_FILES;
         const processed: Record<string, { code: string }> = { ...rawFiles };
 
         // If /App.jsx exists, ensure /App.js re-exports it so Sandpack's default /App.js ("Hello world")

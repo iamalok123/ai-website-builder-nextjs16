@@ -220,9 +220,14 @@ RULES:
                         where: { id: workspaceId, userId },
                         data: { fileData: newFileData as never },
                     }),
-                    db.user.update({
-                        where: { id: userId },
-                        data: { credits: { decrement: CREDIT_COST_PER_GENERATION } },
+                    db.user.updateMany({
+                        where: {
+                            id: userId,
+                            credits: { gte: CREDIT_COST_PER_GENERATION },
+                        },
+                        data: {
+                            credits: { decrement: CREDIT_COST_PER_GENERATION },
+                        },
                     }),
                 ]);
 
@@ -239,20 +244,25 @@ RULES:
                     sseEvent("done", {
                         fileData: newFileData,
                         summary: finalSummary || result.outputText,
-                        creditsRemaining:
-                            updatedUser?.credits ?? user.credits - CREDIT_COST_PER_GENERATION,
+                        creditsRemaining: updatedUser?.credits ?? 0,
                     })
                 );
-            } catch (err: any) {
+            } catch (err: unknown) {
                 console.error("[improve] error:", err);
 
                 let errorMessage = "Something went wrong. Please try again.";
+                const errObj = err as {
+                    status?: number;
+                    message?: string;
+                    code?: string;
+                    cause?: { code?: string };
+                } | null;
 
-                if (err?.status === 429 || err?.message?.includes("429") || err?.message?.includes("quota") || err?.message?.includes("Quota")) {
+                if (errObj?.status === 429 || errObj?.message?.includes("429") || errObj?.message?.includes("quota") || errObj?.message?.includes("Quota")) {
                     errorMessage = "You have exceeded your Gemini API rate limit (Free Tier). Please wait 60 seconds and try again.";
-                } else if (err?.status === 503 || err?.message?.includes("503")) {
+                } else if (errObj?.status === 503 || errObj?.message?.includes("503")) {
                     errorMessage = "The Gemini AI servers are currently experiencing high demand. Please try again in a few moments.";
-                } else if (err?.code === "ECONNRESET" || err?.cause?.code === "ECONNRESET" || err?.message?.includes("terminated")) {
+                } else if (errObj?.code === "ECONNRESET" || errObj?.cause?.code === "ECONNRESET" || errObj?.message?.includes("terminated")) {
                     errorMessage = "The AI connection was interrupted. This can happen with complex generations. Please try again.";
                 } else if (err instanceof Error) {
                     errorMessage = err.message;

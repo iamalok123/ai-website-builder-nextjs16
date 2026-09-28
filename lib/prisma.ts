@@ -15,4 +15,6 @@ function createPrismaClient() {
 
 export const db = globalForPrisma.prisma ?? createPrismaClient();
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+// In Next.js on Node.js (Render), cache on globalThis across all environments
+// to prevent multiple PrismaPg connection pools when code chunks are evaluated
+globalForPrisma.prisma = db;

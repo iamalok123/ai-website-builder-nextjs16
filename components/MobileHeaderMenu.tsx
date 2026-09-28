@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Menu, X, Zap } from 'lucide-react'
 import { Show, SignInButton, SignUpButton, UserButton, useUser } from '@clerk/nextjs'
@@ -8,9 +8,10 @@ import { Button } from './ui/button'
 import { PricingModal } from './PricingModal'
 import { PLANS } from '@/lib/constants'
 import { Plan } from '@/types/plans'
+import { getUserCreditInfo, type UserCreditInfo } from '@/actions/user'
 
 interface MobileHeaderMenuProps {
-    user: {
+    user?: {
         name?: string | null
         email?: string | null
         credits: number
@@ -18,10 +19,21 @@ interface MobileHeaderMenuProps {
     } | null
 }
 
-export const MobileHeaderMenu = ({ user }: MobileHeaderMenuProps) => {
+export const MobileHeaderMenu = ({ user: initialUser }: MobileHeaderMenuProps) => {
     const [isOpen, setIsOpen] = useState(false)
-    const { user: clerkUser } = useUser()
+    const { user: clerkUser, isSignedIn } = useUser()
+    const [fetchedUser, setFetchedUser] = useState<UserCreditInfo | null>(null)
 
+    useEffect(() => {
+        if (!isOpen || !isSignedIn || initialUser || fetchedUser) return;
+        getUserCreditInfo()
+            .then((data) => {
+                if (data) setFetchedUser(data);
+            })
+            .catch(() => {});
+    }, [isOpen, isSignedIn, initialUser, fetchedUser]);
+
+    const user = initialUser ?? fetchedUser;
     const displayName = user?.name || clerkUser?.fullName || clerkUser?.firstName || 'My Account'
     const displayEmail = user?.email || clerkUser?.primaryEmailAddress?.emailAddress || ''
 

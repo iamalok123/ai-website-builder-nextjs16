@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
                 if (isClosed) return;
                 try {
                     controller.enqueue(encoder.encode(chunk));
-                } catch (e) {
+                } catch {
                     isClosed = true;
                 }
             };
@@ -270,6 +270,7 @@ export async function POST(req: NextRequest) {
                 let lastEmitTime = 0; // throttle thought emissions
 
                 for await (const chunk of geminiStream) {
+                    if (isClosed) break;
                     const parts = chunk.candidates?.[0]?.content?.parts ?? [];
 
                     for (const part of parts) {
@@ -383,6 +384,9 @@ export async function POST(req: NextRequest) {
                 ];
 
 
+                // If client aborted or closed connection, do not save or charge credits
+                if (isClosed) return;
+
                 const [workspace] = await db.$transaction([
                     workspaceId
                         ? db.workspace.update({
@@ -400,9 +404,14 @@ export async function POST(req: NextRequest) {
                                 fileData: newFileData as never,
                             },
                         }),
-                    db.user.update({
-                        where: { id: userId },
-                        data: { credits: { decrement: CREDIT_COST_PER_GENERATION } },
+                    db.user.updateMany({
+                        where: {
+                            id: userId,
+                            credits: { gte: CREDIT_COST_PER_GENERATION },
+                        },
+                        data: {
+                            credits: { decrement: CREDIT_COST_PER_GENERATION },
+                        },
                     }),
                 ], {
                     maxWait: 15000, // 15 seconds max wait to connect
@@ -431,21 +440,26 @@ export async function POST(req: NextRequest) {
                         workspaceId: workspace.id,
                         assistantMessage,
                         fileData: newFileData,
-                        creditsRemaining:
-                            updatedUser?.credits ?? user.credits - CREDIT_COST_PER_GENERATION,
+                        creditsRemaining: updatedUser?.credits ?? 0,
                     })
                 );
-            } catch (err: any) {
+            } catch (err: unknown) {
                 console.error("[gen-ai-code] stream error:", err);
 
                 let errorMessage = "Something went wrong. Please try again.";
+                const errObj = err as {
+                    status?: number;
+                    message?: string;
+                    code?: string;
+                    cause?: { code?: string };
+                } | null;
 
                 // Parse specific API errors so the user knows what actually happened
-                if (err?.status === 429 || err?.message?.includes("429") || err?.message?.includes("quota")) {
+                if (errObj?.status === 429 || errObj?.message?.includes("429") || errObj?.message?.includes("quota")) {
                     errorMessage = "You have exceeded your Gemini API rate limit (Free Tier). Please wait 60 seconds and try again.";
-                } else if (err?.status === 503 || err?.message?.includes("503")) {
+                } else if (errObj?.status === 503 || errObj?.message?.includes("503")) {
                     errorMessage = "The Gemini AI servers are currently experiencing high demand. Please try again in a few moments.";
-                } else if (err?.code === "ECONNRESET" || err?.cause?.code === "ECONNRESET" || err?.message?.includes("terminated")) {
+                } else if (errObj?.code === "ECONNRESET" || errObj?.cause?.code === "ECONNRESET" || errObj?.message?.includes("terminated")) {
                     errorMessage = "The AI connection was interrupted. This can happen with complex generations. Please try again.";
                 }
 
