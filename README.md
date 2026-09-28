@@ -15,11 +15,12 @@ A full-stack, enterprise-grade AI Web Application & Component Builder powered by
 
 ## 🌟 What's New in Recent Updates
 
-- 🎨 **Landing Page & Theme Overhaul:** Complete redesign featuring an orange accent dark-workspace mockup, floating glassmorphic navbar, unified demo preview, and marquee prompt suggestion chips.
-- 📱 **Responsive Mobile Navigation:** Added a sleek `MobileHeaderMenu` with drawer navigation for mobile devices.
-- ⚡ **Instant Workspace & Project Loading:** Introduced dedicated Next.js 16 loading boundary screens (`workspace/loading.tsx` and `projects/loading.tsx`) and optimized server actions to deliver faster perceived load times.
-- 🛠️ **Deployment & Health Monitoring:** Added `/api/health` health check route, `proxy.ts` middleware exception for keep-alive pings, and complete `render.yaml` configuration.
-- 🔒 **Node 22 & Prisma 7 Upgrade:** Upgraded engine requirements (`Node >= 22.12.0`) to ensure full compatibility with Prisma 7 ORM and client adapter performance.
+- ⚡ **Zero-Blocking Header & Client Credit Streaming:** Extracted `UserCreditBadge` into an asynchronous client component with skeleton fallback, eliminating blocking database checks from the main layout header for instant navigation.
+- 🛡️ **Guarded Atomic Credit Ledger & Stream Abort Protection:** Switched credit deductions to conditional Prisma transactions (`credits >= CREDIT_COST`) to prevent race-condition negative balances. Added client abort detection (`isClosed`) so interrupted or cancelled generations never deduct credits or commit partial files.
+- 🔄 **Self-Healing User Provisioning:** Integrated automated `checkUser()` sync fallbacks across all project and workspace server actions, guaranteeing seamless auto-provisioning and concurrent sign-up handling without unexpected redirects.
+- 🎨 **SSR-Safe Background Animations:** Migrated `HexagonBackground` to React 19's `useSyncExternalStore`, eliminating window resize hydration mismatches and layout flicker.
+- 🔌 **Global Prisma Pool Hardening:** Cached Prisma Client instance on `globalThis` across all environments (including production Node runtime on Render) to prevent connection pool exhaustion during chunk evaluation.
+- 🚨 **Production Build Stability:** Streamlined error boundaries with segment-level resilience (`workspace/error.tsx`) and Next.js 16 built-in global fallbacks, eliminating prerender worker crashes.
 
 ---
 
@@ -29,14 +30,17 @@ A full-stack, enterprise-grade AI Web Application & Component Builder powered by
 - **SSE Stream Processing:** Streams response "thought chunks" (e.g. *Analyzing prompt...*, *Structuring Tailwind layout...*, *Adding interactive state...*) via Server-Sent Events before delivering code.
 - **Iterative Refinement:** Refine generated UI through follow-up prompt prompts. Modify styling, add animations, or create sub-components dynamically.
 - **NPM Registry Hallucination Shield:** Validates imported packages against the official NPM registry to prevent broken dependency imports in Sandpack.
+- **Resilient Error Categorization:** Granular diagnostics for Gemini free-tier quota limits (429), high-demand server capacity (503), and connection drops.
 
 ### 💻 In-Browser Interactive Execution Sandbox
 - **Powered by Sandpack:** Runs generated React 19 and Tailwind CSS code directly inside an isolated browser sandbox (`@codesandbox/sandpack-react`).
 - **Zero Local Setup:** Instant visual feedback without compiling or installing dependencies locally.
+- **Code Change Synchronization:** Synchronizes manual code edits from Sandpack back to persistent workspace storage seamlessly.
 
 ### 🔐 Authentication & Atomic Credit Economy
-- **Clerk Authentication:** Frictionless user sign-up, sign-in, and session management (`@clerk/nextjs`).
-- **Atomic Credit Ledger:** New users receive 10 initial credits. Credits are deducted via atomic Prisma database transactions (`db.$transaction`) only upon successful code generation.
+- **Clerk Authentication:** Frictionless user sign-up, sign-in, and session management (`@clerk/nextjs`) with resilient fallback handlers for concurrent user creation.
+- **Atomic Credit Ledger:** New users receive 10 initial credits. Deductions use conditional atomic operations (`credits: { gte: CREDIT_COST }`) executed only upon successful stream completion, safeguarding users from credit loss during network disconnects.
+- **Non-Blocking Credit Streaming:** Credits are fetched asynchronously via client-side `UserCreditBadge`, keeping navbar rendering blazing fast without blocking SSR.
 
 ### 🛡️ Enterprise-Grade Security
 - **Arcjet Security Engine:** Integrated `@arcjet/next` to block bot pings, mitigate AI prompt injection attacks, and shield against malicious rate abuse.
@@ -66,7 +70,7 @@ graph TD
 | Layer | Technology | Version | Purpose |
 | :--- | :--- | :--- | :--- |
 | **Framework** | Next.js | `16.2.10` | App Router, Server Actions, Dynamic Streaming |
-| **Frontend Library** | React / React DOM | `19.2.4` | React Concurrent Features & Modern Hooks |
+| **Frontend Library** | React / React DOM | `19.2.4` | React Concurrent Features, Modern Hooks & `useSyncExternalStore` |
 | **Runtime Engine** | Node.js | `>=22.12.0 <24.0.0` | Node 22 LTS compatibility for Prisma 7 |
 | **AI Model & SDK** | Google GenAI (`@google/genai`) | `2.12.0` | Streaming code generation via Gemini 3.5 Flash |
 | **Sandbox Execution** | Sandpack React & Themes | `2.20.0` / `2.0.21` | In-browser client execution engine |
@@ -82,7 +86,8 @@ graph TD
 ```text
 ai_website_builder_nextjs_16/
 ├── actions/                         # Server Actions (Database mutations & queries)
-│   ├── projects.ts                  # Fetching, listing, and deleting user projects
+│   ├── projects.ts                  # Fetching, listing, and deleting user projects (with auto-provisioning)
+│   ├── user.ts                      # Asynchronous credit & subscription plan retrieval
 │   └── workspace.ts                 # Workspace retrieval and file update mutations
 ├── app/                             # Next.js 16 App Router Entry Point
 │   ├── (auth)/                      # Clerk authentication routes (Sign In / Sign Up)
@@ -99,25 +104,26 @@ ai_website_builder_nextjs_16/
 │   │   ├── gen-ai-code/             # SSE endpoint for initial workspace generation
 │   │   ├── improve/                 # SSE endpoint for iterative code edits
 │   │   └── health/                  # Healthcheck endpoint for Render / Uptime monitoring
-│   ├── global-error.tsx             # Global application error boundary
 │   ├── globals.css                  # Global styles & custom animations
 │   ├── layout.tsx                   # Root layout, theme providers, & Clerk provider
 │   ├── not-found.tsx                # Custom 404 page
-│   └── page.tsx                     # Redesigned Landing Page with demo preview & marquee
+│   └── page.tsx                     # Landing page with demo preview & marquee suggestions
 ├── components/                      # Reusable UI Components
 │   ├── ChatPanel.tsx                # AI Chat interface, message list, & thought chunks
 │   ├── CodePanel.tsx                # Sandpack editor & live browser preview toggle
-│   ├── Header.tsx                   # Main navigation header
-│   ├── MobileHeaderMenu.tsx         # Mobile drawer menu navigation
+│   ├── Header.tsx                   # Main navigation header (non-blocking)
+│   ├── MobileHeaderMenu.tsx         # Mobile drawer menu navigation with lazy credit sync
 │   ├── ProjectCard.tsx              # Project preview card with action triggers
+│   ├── UserCreditBadge.tsx          # Asynchronous client credit badge with pricing modal
 │   ├── WorkspaceClient.tsx          # Client state wrapper for Chat & Code panels
 │   ├── theme-provider.tsx           # Dark/light theme provider wrapper
 │   └── ui/                          # Primitive UI components (Shadcn / Base UI)
 ├── lib/                             # Core Utilities & Configuration
 │   ├── arcjet.ts                    # Arcjet security rules configuration
+│   ├── checkUser.ts                 # Resilient Clerk-to-Prisma user sync & auto-provisioning
 │   ├── constants.ts                 # Application constants (e.g. credit cost rules)
 │   ├── data.ts                      # Landing page mock dataset & prompts
-│   └── prisma.ts                    # Prisma Client initialization instance
+│   └── prisma.ts                    # Prisma Client instance with universal globalThis caching
 ├── prisma/                          # Database Modeling & Migrations
 │   └── schema.prisma                # Relational User & Workspace schema
 ├── proxy.ts                         # Custom Middleware proxy (Clerk & Arcjet guard)
@@ -216,11 +222,18 @@ Open [http://localhost:3000](http://localhost:3000) in your browser to start bui
   2. Runs Arcjet threat detection & prompt injection check.
   3. Sends request to Google Gemini 3.5 Flash.
   4. Streams SSE event logs (`thought` chunks and code payload).
-  5. Validates NPM dependencies against registry.
-  6. Executes atomic database transaction to deduct credit and save Workspace.
+  5. Monitors client connection state (`isClosed`) — aborts without saving or charging if client disconnects.
+  6. Validates NPM dependencies against registry.
+  7. Executes atomic transaction with conditional balance check (`credits >= CREDIT_COST`) to deduct credit and save Workspace.
+  8. Gracefully handles and categorizes upstream API exceptions (429 rate limit, 503 high demand, connection resets).
 
 ### 2. `POST /api/improve`
 - **Description:** Refines, fixes bugs, or updates existing workspace code files via iterative AI prompts.
+- **Workflow:**
+  1. Validates workspace ownership, existing files, and credit balance.
+  2. Generates updated file structures with Gemini 3.5 Flash and streams diff thoughts.
+  3. Checks connection liveness before committing updates.
+  4. Deducts credit atomically with balance guard and broadcasts completed payload.
 
 ### 3. `GET /api/health`
 - **Description:** Lightweight health monitoring endpoint returning system status `200 OK` for uptime monitors (e.g. Render keep-alive cron jobs).
