@@ -7,12 +7,7 @@ import { db } from "@/lib/prisma";
 import { checkUser } from "@/lib/checkUser";
 import type { WorkspaceUser, WorkspaceData, FileData } from "@/types/workspace";
 
-
 export type { WorkspaceUser, WorkspaceData } from "@/types/workspace";
-
-
-
-
 
 // ─── Get the current authenticated user ──────────────────────────────────────
 
@@ -20,16 +15,27 @@ export async function getWorkspaceUser(): Promise<WorkspaceUser> {
     const { userId: clerkId } = await auth();
     if (!clerkId) redirect("/");
 
-    let user = await db.user.findUnique({
-        where: { clerkId },
-        select: { id: true, credits: true, plan: true },
-    });
+    let user = null;
+    try {
+        user = await db.user.findUnique({
+            where: { clerkId },
+            select: { id: true, credits: true, plan: true },
+        });
+    } catch (err) {
+        console.error("[Database Connection Error] Failed to fetch user in getWorkspaceUser:", err);
+        throw err;
+    }
 
     if (!user) {
         // Auto-provision via checkUser() to guarantee synchronization
-        const synced = await checkUser();
-        if (synced) {
-            user = { id: synced.id, credits: synced.credits, plan: synced.plan };
+        try {
+            const synced = await checkUser();
+            if (synced) {
+                user = { id: synced.id, credits: synced.credits, plan: synced.plan };
+            }
+        } catch (err) {
+            console.error("[Database Connection Error] Failed to sync user in checkUser:", err);
+            throw err;
         }
     }
 
@@ -38,36 +44,33 @@ export async function getWorkspaceUser(): Promise<WorkspaceUser> {
     return user;
 }
 
-
-
-
-
 // ─── Get a workspace by id (must belong to the current user) ─────────────────
 
 export async function getWorkspaceById(
     workspaceId: string,
     userId?: string
 ): Promise<WorkspaceData & { userId?: string }> {
-    const workspace = await db.workspace.findUnique({
-        where: userId ? { id: workspaceId, userId } : { id: workspaceId },
-        select: {
-            id: true,
-            title: true,
-            messages: true,
-            fileData: true,
-            userId: true,
-        },
-    });
+    let workspace = null;
+    try {
+        workspace = await db.workspace.findUnique({
+            where: userId ? { id_userId: { id: workspaceId, userId } } : { id: workspaceId },
+            select: {
+                id: true,
+                title: true,
+                messages: true,
+                fileData: true,
+                userId: true,
+            },
+        });
+    } catch (err) {
+        console.error("[Database Connection Error] Failed to fetch workspace in getWorkspaceById:", err);
+        throw err;
+    }
 
     if (!workspace) redirect("/projects");
 
     return workspace;
 }
-
-
-
-
-
 
 // ─── Update workspace file data directly ──────────────────────────────────────
 
@@ -88,7 +91,7 @@ export async function updateWorkspaceFileData(
 
     try {
         await db.workspace.update({
-            where: { id: workspaceId, userId },
+            where: { id_userId: { id: workspaceId, userId } },
             data: { fileData: fileData as never },
         });
         revalidatePath("/projects");

@@ -40,6 +40,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-#md files
+# Documentation, context & markdown files
+PROJECT_CONTEXT.md
+INTERVIEW_QA.md
+prompt.md
 detail.mdx
+*.md
+!README.md
+
 /lib/generated/prisma

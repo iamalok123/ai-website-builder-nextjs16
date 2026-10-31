@@ -11,10 +11,8 @@ export default async function WorkspacePage({
 }: WorkspacePageProps) {
     const { prompt, id } = await searchParams;
 
-    const [user, workspace] = await Promise.all([
-        getWorkspaceUser(),
-        id ? getWorkspaceById(id) : Promise.resolve(null),
-    ]);
+    const user = await getWorkspaceUser();
+    const workspace = id ? await getWorkspaceById(id, user.id) : null;
 
     if (id && workspace && workspace.userId && workspace.userId !== user.id) {
         redirect("/");

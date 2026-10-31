@@ -35,12 +35,20 @@ export default function WorkspaceError({ error, reset }: WorkspaceErrorProps) {
                     An unexpected error occurred while loading or rendering the workspace preview. Your project files and messages are saved.
                 </p>
 
-                {/* Optional error snippet if available */}
-                {error?.message && (
-                    <div className="mb-6 max-h-24 overflow-y-auto rounded-xl border border-white/5 bg-white/4 p-3 text-left font-mono text-[11px] text-zinc-400 leading-relaxed scrollbar-none">
-                        {error.message}
-                    </div>
-                )}
+                {/* Error snippet and digest */}
+                <div className="mb-6 rounded-xl border border-white/5 bg-white/4 p-3 text-left font-mono text-[11px] text-zinc-400 leading-relaxed">
+                    {error?.digest && (
+                        <p className="font-semibold text-orange-400 mb-1">
+                            Error Digest: {error.digest}
+                        </p>
+                    )}
+                    <p className="break-all">{error?.message || "An unexpected error occurred."}</p>
+                    {error?.message?.includes("Server Components render") && (
+                        <p className="mt-2 text-[10px] text-zinc-500 border-t border-white/5 pt-2">
+                            Note: Next.js masks Server Component errors in production. Check your server terminal or database connection (e.g. Supabase status/DATABASE_URL).
+                        </p>
+                    )}
+                </div>
 
                 {/* Action Buttons */}
                 <div className="flex flex-col gap-2.5">
