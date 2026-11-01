@@ -27,6 +27,7 @@ export async function createE2bSandbox(timeoutMs = E2B_SANDBOX_TIMEOUT_MS): Prom
         timeoutMs,
         network: {
             allowPublicTraffic: true,
+            maskRequestHost: "localhost:${PORT}",
         },
         metadata: {
             app: "zephyre",
@@ -280,11 +281,11 @@ export async function startSandboxApp(
         await sandbox.commands.run(`cd ${baseDir} && npm run dev > /tmp/dev-server.log 2>&1`, { background: true });
     }
 
-    // Wait up to 15 seconds for the dev server to start listening on port 3000
+    // Wait up to 20 seconds for the dev server to start responding on port 3000
     try {
         await sandbox.commands.run(
-            `for i in $(seq 1 30); do if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1; then exit 0; fi; sleep 0.5; done; exit 0`,
-            { timeoutMs: 18000 }
+            `for i in $(seq 1 40); do if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1 || curl -s -f http://localhost:3000/ > /dev/null 2>&1; then exit 0; fi; sleep 0.5; done; exit 0`,
+            { timeoutMs: 22000 }
         );
     } catch {
         // Dev server startup verification timed out; preview URL will still be returned

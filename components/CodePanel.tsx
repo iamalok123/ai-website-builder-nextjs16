@@ -416,10 +416,12 @@ export default defineConfig({
         });
     };
 
-    // Reload iframe
+    // Reload iframe with cache-busting timestamp
     const handleRefreshIframe = () => {
         if (iframeRef.current && previewUrl) {
-            iframeRef.current.src = previewUrl;
+            const separator = previewUrl.includes("?") ? "&" : "?";
+            iframeRef.current.src = `${previewUrl}${separator}_t=${Date.now()}`;
+            toast.info("Reloading preview frame...");
         }
     };
 

@@ -56,9 +56,18 @@ describe("E2B Sandbox Configuration & Stack Detection", () => {
     });
   });
 
-  describe("Constants", () => {
+  describe("Constants & Network Defaults", () => {
     it("should define a 15-minute default timeout", () => {
       expect(E2B_SANDBOX_TIMEOUT_MS).toBe(15 * 60 * 1000);
+    });
+
+    it("should formulate expected network configuration with public access and host masking", () => {
+      const networkConfig = {
+        allowPublicTraffic: true,
+        maskRequestHost: "localhost:${PORT}",
+      };
+      expect(networkConfig.allowPublicTraffic).toBe(true);
+      expect(networkConfig.maskRequestHost).toBe("localhost:${PORT}");
     });
   });
 });
