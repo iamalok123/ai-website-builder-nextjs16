@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest } from "next/server";
 import { GoogleGenAI } from "@google/genai";
+import { jsonrepair } from "jsonrepair";
 import { db } from "@/lib/prisma";
 import { CREDIT_COST_PER_GENERATION } from "@/lib/constants";
 import type { Message, FileData } from "@/types/workspace";
@@ -195,6 +196,148 @@ async function buildContents(messages: Message[], fileData: FileData | null) {
 
 
 
+// ─── Robust LLM JSON Parser ────────────────────────────────────────────────
+function parseLlmJson(raw: string): {
+    assistantMessage: string;
+    title?: string;
+    files: Record<string, { code: string }>;
+    dependencies?: Record<string, string>;
+} {
+    let clean = raw.trim();
+    if (clean.startsWith("```json")) clean = clean.slice(7);
+    else if (clean.startsWith("```")) clean = clean.slice(3);
+    if (clean.endsWith("```")) clean = clean.slice(0, -3);
+    clean = clean.trim();
+
+    const firstBrace = clean.indexOf("{");
+    const lastBrace = clean.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1) {
+        clean = clean.substring(firstBrace, lastBrace + 1);
+    }
+
+    try {
+        return JSON.parse(clean);
+    } catch {
+        try {
+            const repaired = jsonrepair(clean);
+            return JSON.parse(repaired);
+        } catch {
+            const sanitized = clean.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, "");
+            const repaired = jsonrepair(sanitized);
+            return JSON.parse(repaired);
+        }
+    }
+}
+
+// ─── Ensure Complete Project File Hierarchy ──────────────────────────────────
+function ensureStandardFiles(
+    files: Record<string, { code: string }>,
+    dependencies: Record<string, string>,
+    title: string
+): { files: Record<string, { code: string }>; dependencies: Record<string, string> } {
+    const updatedFiles = { ...files };
+    const isPython = Object.keys(updatedFiles).some((p) => p.endsWith(".py") || p.includes("requirements.txt"));
+
+    if (isPython) {
+        if (!updatedFiles["/requirements.txt"] && !updatedFiles["requirements.txt"]) {
+            updatedFiles["/requirements.txt"] = { code: "fastapi\nuvicorn\njinja2\n" };
+        }
+        return { files: updatedFiles, dependencies };
+    }
+
+    // Ensure root index.html
+    if (!updatedFiles["/index.html"] && !updatedFiles["index.html"]) {
+        updatedFiles["/index.html"] = {
+            code: `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${title || "Zephyre App"}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-black text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>`
+        };
+    }
+
+    // Ensure root vite.config.js
+    if (!updatedFiles["/vite.config.js"] && !updatedFiles["vite.config.js"]) {
+        updatedFiles["/vite.config.js"] = {
+            code: `import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    host: '0.0.0.0',
+    port: 3000,
+    strictPort: true,
+  },
+});`
+        };
+    }
+
+    // Ensure /src/main.jsx entry point
+    if (!updatedFiles["/src/main.jsx"] && !updatedFiles["src/main.jsx"]) {
+        updatedFiles["/src/main.jsx"] = {
+            code: `import React, { StrictMode } from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.jsx';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);`
+        };
+    }
+
+    // Bridge App.jsx into src/App.jsx and root /App.jsx
+    if (updatedFiles["/App.jsx"] && !updatedFiles["/src/App.jsx"]) {
+        updatedFiles["/src/App.jsx"] = { code: updatedFiles["/App.jsx"].code };
+    } else if (updatedFiles["/src/App.jsx"] && !updatedFiles["/App.jsx"]) {
+        updatedFiles["/App.jsx"] = { code: updatedFiles["/src/App.jsx"].code };
+    }
+
+    // Ensure package.json
+    if (!updatedFiles["/package.json"] && !updatedFiles["package.json"]) {
+        updatedFiles["/package.json"] = {
+            code: JSON.stringify(
+                {
+                    name: "zephyre-app",
+                    version: "1.0.0",
+                    type: "module",
+                    scripts: {
+                        dev: "vite --host 0.0.0.0 --port 3000",
+                        build: "vite build",
+                        start: "node server.js",
+                    },
+                    dependencies: {
+                        react: "^19.0.0",
+                        "react-dom": "^19.0.0",
+                        "lucide-react": "^1.16.0",
+                        clsx: "^2.1.1",
+                        "tailwind-merge": "^3.0.0",
+                        ...dependencies,
+                    },
+                    devDependencies: {
+                        "@vitejs/plugin-react": "^4.3.4",
+                        vite: "^6.0.0",
+                    },
+                },
+                null,
+                2
+            ),
+        };
+    }
+
+    return { files: updatedFiles, dependencies };
+}
+
 export async function POST(req: NextRequest) {
     const { userId: clerkId } = await auth();
     if (!clerkId) {
@@ -282,18 +425,12 @@ export async function POST(req: NextRequest) {
                 const contents = await buildContents(messages, fileData);
 
                 const geminiStream = await ai.models.generateContentStream({
-                    model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+                    model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
                     contents,
                     config: {
                         systemInstruction: getSystemPrompt(messages),
                         temperature: 0.7,
-
-                        // Force jSON o/p, Gemini will never wrap the responce in markdown
-                        responseMimeType: "application/json",
-
                         // Gemini emits thought chunks before the actual output.
-                        // We extract short labels from them and emit as status events
-                        // so the user sees "Designing layout…", "Adding interactivity…" etc.
                         thinkingConfig: {
                             includeThoughts: true,
                         },
@@ -311,12 +448,6 @@ export async function POST(req: NextRequest) {
                         if (!part.text) continue;
 
                         if (part.thought) {
-                            // Extract just the short label — not the full wall of text
-
-                            // Thought chunks are Gemini's internal reasoning – verbose and frequent.
-                            // We throttle to one status update per 600ms and extract just the
-                            // bold heading or first sentence so the UI stays clean.
-
                             const now = Date.now();
                             if (now - lastEmitTime > 600) {
                                 const label = extractThoughtLabel(part.text);
@@ -326,32 +457,23 @@ export async function POST(req: NextRequest) {
                                 }
                             }
                         } else {
-                            // No thought parts are actual JSON o/p - accumulate them
                             accumulated += part.text;
                         }
                     }
                 }
 
                 // ── Parse the complete JSON response ──────────────────────────────────
-                // If Gemini returns malformed JSON we abort here without deducting a credit.
-                // This is the "no charge on AI failure" guarantee.
                 let parsed: {
                     assistantMessage: string;
                     title?: string;
                     files: Record<string, { code: string }>;
-                    dependencies: Record<string, string>;
+                    dependencies?: Record<string, string>;
                 };
 
-                let cleanJson = accumulated.trim();
-                const firstBrace = cleanJson.indexOf('{');
-                const lastBrace = cleanJson.lastIndexOf('}');
-                if (firstBrace !== -1 && lastBrace !== -1) {
-                    cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
-                }
-
                 try {
-                    parsed = JSON.parse(cleanJson);
-                } catch {
+                    parsed = parseLlmJson(accumulated);
+                } catch (parseErr) {
+                    console.error("[gen-ai-code] JSON parsing failed:", parseErr, "Raw output snippet:", accumulated.slice(0, 300));
                     enqueue(
                         sseEvent("error", {
                             message: "AI returned invalid JSON. Please try again.",
@@ -378,26 +500,31 @@ export async function POST(req: NextRequest) {
                     return;
                 }
 
-
-
-
                 // ── Validate npm packages ──────────────────────────────────────────────
-                // Gemini sometimes hallucinates package names that don't exist on npm.
-                // We hit the npm registry for each dep and silently drop any fakes.
-                // Real packages pass through unchanged.
-
                 enqueue(sseEvent("status", { message: "Validating packages…" }));
                 const validatedDeps = await validateDependencies(dependencies ?? {});
+
+                // ── Ensure Full Directory & File Hierarchy is Persisted ──────────────
+                const mergedFiles = {
+                    ...(fileData?.files || {}),
+                    ...files,
+                };
+                const mergedDeps = {
+                    ...(fileData?.dependencies || {}),
+                    ...validatedDeps,
+                };
+                const finalTitle = aiTitle || fileData?.title || "Zephyre App";
+
+                const { files: fullFiles, dependencies: fullDeps } = ensureStandardFiles(
+                    mergedFiles,
+                    mergedDeps,
+                    finalTitle
+                );
+
                 const newFileData: FileData = {
-                    files: {
-                        ...(fileData?.files || {}),
-                        ...files,
-                    },
-                    dependencies: {
-                        ...(fileData?.dependencies || {}),
-                        ...validatedDeps,
-                    },
-                    title: aiTitle || fileData?.title || "Zephyre App",
+                    files: fullFiles,
+                    dependencies: fullDeps,
+                    title: finalTitle,
                 };
 
 

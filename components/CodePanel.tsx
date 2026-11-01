@@ -20,18 +20,28 @@ import {
     FileCode,
     FileJson,
     FileText,
+    Folder,
+    FolderOpen,
+    ChevronRight,
+    ChevronDown,
 } from "lucide-react";
 import { RingLoader } from "react-spinners";
 import JSZip from "jszip";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { PricingModal } from "@/components/PricingModal";
 import type { FileData, StatusStep } from "@/types/workspace";
 
 // Types
 type ActiveTab = "preview" | "code";
 type Viewport = "desktop" | "tablet" | "mobile";
+
+interface FileTreeNode {
+    name: string;
+    path: string;
+    isFolder: boolean;
+    children?: FileTreeNode[];
+}
 
 interface CodePanelProps {
     fileData: FileData | null;
@@ -44,6 +54,167 @@ interface CodePanelProps {
     isImproving: boolean;
     isProUser: boolean;
     onToggleView: () => void;
+}
+
+// ─── Build Tree Structure from Flat File Paths ──────────────────────────────
+function buildFileTree(paths: string[]): FileTreeNode[] {
+    interface InternalTree {
+        [key: string]: {
+            __node: FileTreeNode;
+            __children: InternalTree;
+        };
+    }
+
+    const root: InternalTree = {};
+
+    for (const rawPath of paths) {
+        const cleanPath = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
+        const parts = cleanPath.split("/").filter(Boolean);
+        let current = root;
+
+        let accumulated = "";
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            const isFile = i === parts.length - 1;
+            accumulated += "/" + part;
+
+            if (!current[part]) {
+                current[part] = {
+                    __node: {
+                        name: part,
+                        path: isFile ? rawPath : accumulated,
+                        isFolder: !isFile,
+                    },
+                    __children: {},
+                };
+            }
+            current = current[part].__children;
+        }
+    }
+
+    function convert(obj: InternalTree): FileTreeNode[] {
+        const result: FileTreeNode[] = [];
+        for (const key of Object.keys(obj)) {
+            const entry = obj[key];
+            const node: FileTreeNode = { ...entry.__node };
+            if (node.isFolder) {
+                node.children = convert(entry.__children);
+                node.children.sort((a, b) => {
+                    if (a.isFolder && !b.isFolder) return -1;
+                    if (!a.isFolder && b.isFolder) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+            }
+            result.push(node);
+        }
+        return result.sort((a, b) => {
+            if (a.isFolder && !b.isFolder) return -1;
+            if (!a.isFolder && b.isFolder) return 1;
+            return a.name.localeCompare(b.name);
+        });
+    }
+
+    return convert(root);
+}
+
+// File icon helper
+function getFileIcon(filename: string) {
+    if (filename.endsWith(".jsx") || filename.endsWith(".tsx")) {
+        return <FileCode className="h-3.5 w-3.5 text-blue-400 shrink-0" />;
+    }
+    if (filename.endsWith(".js") || filename.endsWith(".ts") || filename.endsWith(".mjs")) {
+        return <FileCode className="h-3.5 w-3.5 text-yellow-400 shrink-0" />;
+    }
+    if (filename.endsWith(".py")) {
+        return <FileCode className="h-3.5 w-3.5 text-emerald-400 shrink-0" />;
+    }
+    if (filename.endsWith(".json")) {
+        return <FileJson className="h-3.5 w-3.5 text-amber-300 shrink-0" />;
+    }
+    if (filename.endsWith(".html")) {
+        return <FileCode className="h-3.5 w-3.5 text-orange-400 shrink-0" />;
+    }
+    if (filename.endsWith(".css")) {
+        return <FileText className="h-3.5 w-3.5 text-sky-300 shrink-0" />;
+    }
+    return <FileText className="h-3.5 w-3.5 text-zinc-400 shrink-0" />;
+}
+
+// Recursive Tree Node Renderer
+function FileTreeNodeItem({
+    node,
+    depth,
+    selectedFile,
+    onSelectFile,
+    collapsedFolders,
+    onToggleFolder,
+}: {
+    node: FileTreeNode;
+    depth: number;
+    selectedFile: string;
+    onSelectFile: (path: string) => void;
+    collapsedFolders: Set<string>;
+    onToggleFolder: (path: string) => void;
+}) {
+    if (node.isFolder) {
+        const isCollapsed = collapsedFolders.has(node.path);
+        return (
+            <div>
+                <button
+                    onClick={() => onToggleFolder(node.path)}
+                    style={{ paddingLeft: `${depth * 14 + 8}px` }}
+                    className="w-full flex items-center gap-1.5 py-1.5 pr-2 rounded-md text-xs font-mono text-zinc-300 hover:text-white hover:bg-white/5 transition-colors text-left"
+                >
+                    {isCollapsed ? (
+                        <ChevronRight className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                    ) : (
+                        <ChevronDown className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                    )}
+                    {isCollapsed ? (
+                        <Folder className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                    ) : (
+                        <FolderOpen className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                    )}
+                    <span className="truncate font-medium">{node.name}</span>
+                </button>
+                {!isCollapsed && node.children && (
+                    <div className="space-y-0.5">
+                        {node.children.map((child) => (
+                            <FileTreeNodeItem
+                                key={child.path}
+                                node={child}
+                                depth={depth + 1}
+                                selectedFile={selectedFile}
+                                onSelectFile={onSelectFile}
+                                collapsedFolders={collapsedFolders}
+                                onToggleFolder={onToggleFolder}
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    const isSelected =
+        selectedFile === node.path ||
+        (node.path.startsWith("/") && selectedFile === node.path.slice(1)) ||
+        (!node.path.startsWith("/") && selectedFile === "/" + node.path);
+
+    return (
+        <button
+            onClick={() => onSelectFile(node.path)}
+            style={{ paddingLeft: `${depth * 14 + 16}px` }}
+            className={`w-full flex items-center gap-2 py-1.5 pr-2.5 rounded-md text-xs font-mono transition-colors text-left truncate ${
+                isSelected
+                    ? "bg-orange-500/20 text-orange-300 font-medium border-l-2 border-orange-500"
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5"
+            }`}
+        >
+            {getFileIcon(node.name)}
+            <span className="truncate">{node.name}</span>
+        </button>
+    );
 }
 
 export function CodePanel({
@@ -60,7 +231,8 @@ export function CodePanel({
 }: CodePanelProps) {
     const [activeTab, setActiveTab] = useState<ActiveTab>("preview");
     const [viewport, setViewport] = useState<Viewport>("desktop");
-    const [selectedFile, setSelectedFile] = useState<string>("/App.jsx");
+    const [selectedFile, setSelectedFile] = useState<string>("/src/App.jsx");
+    const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
     const [sandboxId, setSandboxId] = useState<string | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isStartingSandbox, setIsStartingSandbox] = useState(false);
@@ -73,16 +245,25 @@ export function CodePanel({
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const files = useMemo(() => fileData?.files ?? {}, [fileData?.files]);
     const fileList = useMemo(() => Object.keys(files), [files]);
+    const fileTree = useMemo(() => buildFileTree(fileList), [fileList]);
 
     // Ensure selected file exists in file list
     useEffect(() => {
-        if (fileList.length > 0 && !files[selectedFile]) {
-            const defaultFile =
-                files["/App.jsx"] ? "/App.jsx" :
-                files["/main.py"] ? "/main.py" :
-                files["/server.js"] ? "/server.js" :
-                fileList[0];
-            setSelectedFile(defaultFile);
+        if (fileList.length > 0) {
+            const hasExact = files[selectedFile];
+            const hasAlt1 = selectedFile.startsWith("/") && files[selectedFile.slice(1)];
+            const hasAlt2 = !selectedFile.startsWith("/") && files["/" + selectedFile];
+
+            if (!hasExact && !hasAlt1 && !hasAlt2) {
+                const defaultFile =
+                    files["/src/App.jsx"] ? "/src/App.jsx" :
+                    files["/App.jsx"] ? "/App.jsx" :
+                    files["/main.py"] ? "/main.py" :
+                    files["/server.js"] ? "/server.js" :
+                    files["/index.html"] ? "/index.html" :
+                    fileList[0];
+                setSelectedFile(defaultFile);
+            }
         }
     }, [fileList, files, selectedFile]);
 
@@ -148,19 +329,32 @@ export function CodePanel({
             startSandbox(fileData);
             prevFileKeysRef.current = currentKeys;
         } else if (currentKeys !== prevFileKeysRef.current) {
-            // New files added, sync to existing sandbox
             syncSandboxFiles(sandboxId, fileData.files);
             prevFileKeysRef.current = currentKeys;
         }
     }, [fileData, isGenerating, sandboxId, startSandbox, syncSandboxFiles]);
 
+    // Resolve code of selected file with leading-slash tolerance
+    const selectedCode = useMemo(() => {
+        if (files[selectedFile]) return files[selectedFile].code;
+        if (selectedFile.startsWith("/") && files[selectedFile.slice(1)]) return files[selectedFile.slice(1)].code;
+        if (!selectedFile.startsWith("/") && files["/" + selectedFile]) return files["/" + selectedFile].code;
+        return "";
+    }, [files, selectedFile]);
+
     // Handle manual code edits
     const handleCodeChange = (newCode: string) => {
         if (!fileData || !selectedFile) return;
 
+        let targetKey = selectedFile;
+        if (!files[targetKey]) {
+            if (targetKey.startsWith("/") && files[targetKey.slice(1)]) targetKey = targetKey.slice(1);
+            else if (!targetKey.startsWith("/") && files["/" + targetKey]) targetKey = "/" + targetKey;
+        }
+
         const updatedFiles = {
             ...files,
-            [selectedFile]: { code: newCode },
+            [targetKey]: { code: newCode },
         };
 
         onFilePatch({
@@ -169,10 +363,22 @@ export function CodePanel({
             title: fileData.title,
         });
 
-        // Sync changed file to running sandbox
         if (sandboxId) {
-            syncSandboxFiles(sandboxId, { [selectedFile]: { code: newCode } });
+            syncSandboxFiles(sandboxId, { [targetKey]: { code: newCode } });
         }
+    };
+
+    // Toggle folder collapse
+    const handleToggleFolder = (folderPath: string) => {
+        setCollapsedFolders((prev) => {
+            const next = new Set(prev);
+            if (next.has(folderPath)) {
+                next.delete(folderPath);
+            } else {
+                next.add(folderPath);
+            }
+            return next;
+        });
     };
 
     // Reload iframe
@@ -232,20 +438,6 @@ export function CodePanel({
         setImproveInput("");
         setShowImproveInput(false);
         await onImprove(trimmed);
-    };
-
-    // File icon helper
-    const getFileIcon = (filename: string) => {
-        if (filename.endsWith(".jsx") || filename.endsWith(".tsx") || filename.endsWith(".js") || filename.endsWith(".ts")) {
-            return <FileCode className="h-3.5 w-3.5 text-blue-400" />;
-        }
-        if (filename.endsWith(".py")) {
-            return <FileCode className="h-3.5 w-3.5 text-amber-400" />;
-        }
-        if (filename.endsWith(".json")) {
-            return <FileJson className="h-3.5 w-3.5 text-emerald-400" />;
-        }
-        return <FileText className="h-3.5 w-3.5 text-zinc-400" />;
     };
 
     return (
@@ -317,7 +509,6 @@ export function CodePanel({
 
                     {/* Right side action buttons */}
                     <div className="flex items-center gap-1.5">
-                        {/* Live Shareable URL Button */}
                         {previewUrl && (
                             <Button
                                 variant="outline"
@@ -446,7 +637,7 @@ export function CodePanel({
                                 <button
                                     onClick={handleRefreshIframe}
                                     title="Reload preview"
-                                    className="p-1 hover:text-white transition-colors"
+                                    className="p-1 hover:text-white transition-colors cursor-pointer"
                                 >
                                     <RefreshCw className="h-3 w-3" />
                                 </button>
@@ -463,46 +654,43 @@ export function CodePanel({
                     )}
                 </TabsContent>
 
-                {/* ── Content: Code Tab ── */}
+                {/* ── Content: Code Tab (Hierarchical File Tree + Editor) ── */}
                 <TabsContent
                     value="code"
                     className="flex-1 min-h-0 min-w-0 m-0 p-0 flex flex-row overflow-hidden bg-[#09090e]"
                 >
-                    {/* Left: Virtual File Tree Explorer */}
-                    <div className="w-56 shrink-0 border-r border-white/5 bg-[#0e0e14] flex flex-col overflow-y-auto">
-                        <div className="p-3 border-b border-white/5 text-[11px] font-semibold text-zinc-400 tracking-wider uppercase">
-                            Files ({fileList.length})
+                    {/* Left: Hierarchical File Explorer */}
+                    <div className="w-64 shrink-0 border-r border-white/5 bg-[#0e0e14] flex flex-col overflow-hidden">
+                        <div className="h-9 shrink-0 px-3 border-b border-white/5 flex items-center justify-between text-[11px] font-semibold text-zinc-400 tracking-wider uppercase">
+                            <span>Explorer</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-zinc-400 font-normal">
+                                {fileList.length} files
+                            </span>
                         </div>
-                        <div className="flex-1 p-2 space-y-0.5">
-                            {fileList.map((filePath) => {
-                                const isSelected = selectedFile === filePath;
-                                return (
-                                    <button
-                                        key={filePath}
-                                        onClick={() => setSelectedFile(filePath)}
-                                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-mono transition-colors text-left truncate ${
-                                            isSelected
-                                                ? "bg-orange-500/20 text-orange-300 font-medium"
-                                                : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5"
-                                        }`}
-                                    >
-                                        {getFileIcon(filePath)}
-                                        <span className="truncate">{filePath}</span>
-                                    </button>
-                                );
-                            })}
+                        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+                            {fileTree.map((node) => (
+                                <FileTreeNodeItem
+                                    key={node.path}
+                                    node={node}
+                                    depth={0}
+                                    selectedFile={selectedFile}
+                                    onSelectFile={setSelectedFile}
+                                    collapsedFolders={collapsedFolders}
+                                    onToggleFolder={handleToggleFolder}
+                                />
+                            ))}
                         </div>
                     </div>
 
                     {/* Right: Code Editor */}
                     <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#07070b]">
                         <div className="flex h-9 shrink-0 items-center justify-between border-b border-white/5 bg-[#0e0e14] px-4 text-xs font-mono text-zinc-400">
-                            <span>{selectedFile}</span>
+                            <span className="text-zinc-300 font-medium">{selectedFile}</span>
                             <span className="text-[10px] text-zinc-500">Auto-saves to cloud sandbox</span>
                         </div>
                         <div className="flex-1 relative overflow-auto p-4">
                             <textarea
-                                value={files[selectedFile]?.code || ""}
+                                value={selectedCode}
                                 onChange={(e) => handleCodeChange(e.target.value)}
                                 spellCheck={false}
                                 className="w-full h-full resize-none bg-transparent font-mono text-xs sm:text-[13px] leading-relaxed text-zinc-200 outline-none selection:bg-orange-500/30 selection:text-orange-200"
