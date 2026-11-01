@@ -568,43 +568,43 @@ export default defineConfig({
                 className="flex h-full w-full flex-col overflow-hidden"
             >
                 {/* ── Header Toolbar ── */}
-                <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/5 bg-[#12121a] px-3 sm:px-4 gap-2">
+                <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/5 bg-[#12121a] px-2 sm:px-4 gap-1.5 sm:gap-2">
                     {/* Left: View Tabs & Mobile Menu */}
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                         {/* Mobile view toggle */}
                         <Button
                             variant="ghost"
                             size="sm"
                             onClick={onToggleView}
-                            className="h-8 gap-1.5 px-2 text-xs font-semibold text-zinc-400 hover:text-white md:hidden"
+                            className="h-8 gap-1 px-2 text-xs font-semibold text-zinc-400 hover:text-white md:hidden"
                         >
                             <MessageSquare className="h-3.5 w-3.5" />
-                            Chat
+                            <span className="hidden xs:inline">Chat</span>
                         </Button>
 
                         {/* View Tabs */}
                         <TabsList className="h-8 bg-black/40 p-0.5 border border-white/5 rounded-lg">
                             <TabsTrigger
                                 value="preview"
-                                className="h-7 gap-1.5 rounded-md px-3 text-xs font-medium data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-300"
+                                className="h-7 gap-1.5 rounded-md px-2 sm:px-3 text-xs font-medium data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-300"
                             >
                                 <Eye className="h-3.5 w-3.5" />
-                                Preview
+                                <span>Preview</span>
                             </TabsTrigger>
                             <TabsTrigger
                                 value="code"
-                                className="h-7 gap-1.5 rounded-md px-3 text-xs font-medium data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-300"
+                                className="h-7 gap-1.5 rounded-md px-2 sm:px-3 text-xs font-medium data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-300"
                             >
                                 <Code2 className="h-3.5 w-3.5" />
-                                Code
+                                <span>Code</span>
                             </TabsTrigger>
                         </TabsList>
                     </div>
 
                     {/* Middle: Browser Address Bar & Preview Navigation */}
-                    <div className="flex flex-1 items-center justify-center min-w-0 px-2">
+                    <div className="flex flex-1 items-center justify-center min-w-0 px-1 sm:px-2">
                         {activeTab === "preview" && previewUrl ? (
-                            <div className="flex items-center gap-1.5 w-full max-w-lg justify-center min-w-0">
+                            <div className="flex items-center gap-1 sm:gap-1.5 w-full max-w-lg justify-center min-w-0">
                                 {/* Responsive Viewport Controls */}
                                 <div className="hidden md:flex items-center gap-0.5 p-0.5 bg-black/40 border border-white/5 rounded-lg shrink-0">
                                     <button
@@ -639,8 +639,8 @@ export default defineConfig({
                                     <RefreshCw className={`h-3.5 w-3.5 ${isIframeLoading ? "animate-spin text-orange-400" : ""}`} />
                                 </button>
 
-                                {/* Central Omnibar Link Pill */}
-                                <div className="flex items-center gap-2 px-3 py-1 bg-black/60 border border-white/10 rounded-full text-xs font-mono text-zinc-300 min-w-0 flex-1 max-w-xs sm:max-w-sm justify-between shadow-inner">
+                                {/* Central Omnibar Link Pill (hidden on small mobile screens to prevent overlapping) */}
+                                <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-black/60 border border-white/10 rounded-full text-xs font-mono text-zinc-300 min-w-0 flex-1 max-w-xs sm:max-w-sm justify-between shadow-inner">
                                     <div className="flex items-center gap-2 min-w-0 truncate">
                                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                                         <span className="truncate select-all text-[11px] text-zinc-300">{previewUrl}</span>
@@ -666,23 +666,23 @@ export default defineConfig({
                                 </a>
                             </div>
                         ) : activeTab === "code" && selectedFile ? (
-                            <div className="flex items-center gap-2 px-3 py-1 bg-black/40 border border-white/5 rounded-full text-xs font-mono text-zinc-400">
-                                <span className="text-zinc-300">{selectedFile}</span>
+                            <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-black/40 border border-white/5 rounded-full text-xs font-mono text-zinc-400">
+                                <span className="text-zinc-300 truncate max-w-xs">{selectedFile}</span>
                             </div>
                         ) : null}
                     </div>
 
                     {/* Right: Actions */}
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                         {previewUrl && (
                             <>
-                                {/* Restart Container */}
+                                {/* Restart Container (hidden on mobile, visible on desktop/tablet) */}
                                 <Button
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => fileData && startSandbox(fileData, sandboxId)}
                                     title="Restart cloud sandbox container"
-                                    className="h-8 gap-1.5 px-2.5 text-xs text-zinc-400 hover:text-orange-300 hover:bg-orange-500/10 cursor-pointer"
+                                    className="hidden md:inline-flex h-8 gap-1.5 px-2 text-xs text-zinc-400 hover:text-orange-300 hover:bg-orange-500/10 cursor-pointer"
                                 >
                                     <RefreshCw className="h-3.5 w-3.5" />
                                     <span className="hidden lg:inline">Restart</span>
@@ -693,7 +693,8 @@ export default defineConfig({
                                     variant="outline"
                                     size="sm"
                                     onClick={handleCopyUrl}
-                                    className="h-8 gap-1.5 px-2.5 text-xs font-semibold bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 hover:text-emerald-300 cursor-pointer"
+                                    title="Share live URL"
+                                    className="h-8 gap-1.5 px-2 sm:px-2.5 text-xs font-semibold bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 hover:text-emerald-300 cursor-pointer"
                                 >
                                     {copied ? <Check className="h-3.5 w-3.5 text-emerald-300" /> : <Copy className="h-3.5 w-3.5" />}
                                     <span className="hidden sm:inline">Share URL</span>
@@ -707,7 +708,8 @@ export default defineConfig({
                             size="sm"
                             onClick={handleExportZip}
                             disabled={isExporting || fileList.length === 0}
-                            className="h-8 gap-1.5 px-2.5 text-xs text-zinc-400 hover:text-white hover:bg-white/5 cursor-pointer"
+                            title="Export ZIP"
+                            className="h-8 gap-1.5 px-2 sm:px-2.5 text-xs text-zinc-400 hover:text-white hover:bg-white/5 cursor-pointer"
                         >
                             {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                             <span className="hidden sm:inline">Export ZIP</span>
