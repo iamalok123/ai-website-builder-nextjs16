@@ -64,57 +64,7 @@ export function detectStack(files: Record<string, { code: string }>): "python" |
     return hasPython ? "python" : "react-node";
 }
 
-/**
- * Writes virtual files to disk inside the sandbox and ensures standard configuration files
- */
-export async function writeFilesToSandbox(
-    sandbox: Sandbox,
-    fileData: FileData,
-    baseDir = "/home/user/app"
-): Promise<{ stack: "python" | "react-node" }> {
-    const files = fileData.files ?? {};
-    const stack = detectStack(files);
-
-    // Ensure working directory exists and any standard directories
-    await sandbox.commands.run(`mkdir -p ${baseDir}/src ${baseDir}/components ${baseDir}/public`);
-
-    // Create subdirectories for nested files
-    const dirs = new Set<string>();
-    for (const rawPath of Object.keys(files)) {
-        const cleanPath = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
-        const lastSlash = cleanPath.lastIndexOf("/");
-        if (lastSlash !== -1) {
-            dirs.add(`${baseDir}/${cleanPath.slice(0, lastSlash)}`);
-        }
-    }
-    for (const dir of dirs) {
-        await sandbox.commands.run(`mkdir -p "${dir}"`);
-    }
-
-    const writePromises: Promise<unknown>[] = [];
-
-    // Write all project files
-    for (const [rawPath, fileObj] of Object.entries(files)) {
-        const cleanPath = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
-        const targetPath = `${baseDir}/${cleanPath}`;
-        writePromises.push(sandbox.files.write(targetPath, fileObj?.code ?? ""));
-    }
-
-    if (stack === "react-node") {
-        // App.jsx dual compatibility (root App.jsx and src/App.jsx)
-        const rootApp = files["/App.jsx"] || files["App.jsx"];
-        const srcApp = files["/src/App.jsx"] || files["src/App.jsx"];
-
-        if (rootApp && !srcApp) {
-            writePromises.push(sandbox.files.write(`${baseDir}/src/App.jsx`, rootApp.code));
-        } else if (srcApp && !rootApp) {
-            writePromises.push(sandbox.files.write(`${baseDir}/App.jsx`, srcApp.code));
-        }
-
-        // Ensure standard Vite + React config with allowedHosts: true for Vite 6
-        let viteConfig = files["/vite.config.js"]?.code || files["vite.config.js"]?.code;
-        if (!viteConfig || !viteConfig.includes("allowedHosts")) {
-            viteConfig = `
+export const STANDARD_VITE_CONFIG = `
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -127,13 +77,51 @@ export default defineConfig({
     allowedHosts: true,
   },
 });
-`;
+`.trim();
+
+/**
+ * Writes virtual files to disk inside the sandbox and ensures standard configuration files
+ */
+export async function writeFilesToSandbox(
+    sandbox: Sandbox,
+    fileData: FileData,
+    baseDir = "/home/user/app"
+): Promise<{ stack: "python" | "react-node" }> {
+    const rawFiles = fileData.files ?? {};
+    const stack = detectStack(rawFiles);
+
+    // Normalize paths and store unique file contents
+    const normalizedFiles: Record<string, string> = {};
+    for (const [rawPath, fileObj] of Object.entries(rawFiles)) {
+        const cleanPath = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
+        normalizedFiles[cleanPath] = fileObj?.code ?? "";
+    }
+
+    if (stack === "react-node") {
+        // App.jsx dual compatibility (root App.jsx and src/App.jsx)
+        if (normalizedFiles["App.jsx"] && !normalizedFiles["src/App.jsx"]) {
+            normalizedFiles["src/App.jsx"] = normalizedFiles["App.jsx"];
+        } else if (normalizedFiles["src/App.jsx"] && !normalizedFiles["App.jsx"]) {
+            normalizedFiles["App.jsx"] = normalizedFiles["src/App.jsx"];
         }
-        writePromises.push(sandbox.files.write(`${baseDir}/vite.config.js`, viteConfig));
+
+        // Strictly enforce allowedHosts: true in vite.config
+        let hasViteConfig = false;
+        for (const [key, code] of Object.entries(normalizedFiles)) {
+            if (key === "vite.config.js" || key === "vite.config.ts" || key === "vite.config.mjs") {
+                hasViteConfig = true;
+                if (!code.includes("allowedHosts")) {
+                    normalizedFiles[key] = STANDARD_VITE_CONFIG;
+                }
+            }
+        }
+        if (!hasViteConfig) {
+            normalizedFiles["vite.config.js"] = STANDARD_VITE_CONFIG;
+        }
 
         // Ensure index.html exists
-        if (!files["/index.html"] && !files["index.html"]) {
-            const indexHtml = `
+        if (!normalizedFiles["index.html"] && !normalizedFiles["public/index.html"]) {
+            normalizedFiles["index.html"] = `
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -147,13 +135,12 @@ export default defineConfig({
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
-`;
-            writePromises.push(sandbox.files.write(`${baseDir}/index.html`, indexHtml));
+`.trim();
         }
 
         // Ensure main.jsx entry point exists
-        if (!files["/src/main.jsx"] && !files["src/main.jsx"] && !files["/main.jsx"]) {
-            const mainJsx = `
+        if (!normalizedFiles["src/main.jsx"] && !normalizedFiles["main.jsx"]) {
+            normalizedFiles["src/main.jsx"] = `
 import React, { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
@@ -163,12 +150,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>
 );
-`;
-            writePromises.push(sandbox.files.write(`${baseDir}/src/main.jsx`, mainJsx));
+`.trim();
         }
 
-        // Ensure package.json exists with all necessary dependencies
-        const rawPkg = files["/package.json"] || files["package.json"];
+        // Ensure package.json exists and is normalized
+        const rawPkgCode = normalizedFiles["package.json"];
         let packageJson: {
             name?: string;
             version?: string;
@@ -178,9 +164,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             devDependencies?: Record<string, string>;
         } | null = null;
 
-        if (rawPkg) {
+        if (rawPkgCode) {
             try {
-                packageJson = JSON.parse(rawPkg.code);
+                packageJson = JSON.parse(rawPkgCode);
             } catch {
                 packageJson = null;
             }
@@ -230,11 +216,28 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             };
         }
 
-        writePromises.push(
-            sandbox.files.write(`${baseDir}/package.json`, JSON.stringify(packageJson, null, 2))
-        );
+        normalizedFiles["package.json"] = JSON.stringify(packageJson, null, 2);
     }
 
+    // Ensure working directory exists and any standard directories
+    await sandbox.commands.run(`mkdir -p ${baseDir}/src ${baseDir}/components ${baseDir}/public`);
+
+    // Create subdirectories for nested files
+    const dirs = new Set<string>();
+    for (const cleanPath of Object.keys(normalizedFiles)) {
+        const lastSlash = cleanPath.lastIndexOf("/");
+        if (lastSlash !== -1) {
+            dirs.add(`${baseDir}/${cleanPath.slice(0, lastSlash)}`);
+        }
+    }
+    for (const dir of dirs) {
+        await sandbox.commands.run(`mkdir -p "${dir}"`);
+    }
+
+    // Write all normalized files exactly once (zero race conditions)
+    const writePromises = Object.entries(normalizedFiles).map(([cleanPath, code]) =>
+        sandbox.files.write(`${baseDir}/${cleanPath}`, code)
+    );
     await Promise.all(writePromises);
 
     // Cross-mirror components between root /components and /src/components so all relative imports resolve

@@ -80,7 +80,24 @@ export async function POST(req: NextRequest) {
             const promises: Promise<unknown>[] = [];
             for (const [rawPath, fileObj] of Object.entries(filesToSync)) {
                 const cleanPath = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
-                promises.push(sandbox.files.write(`${baseDir}/${cleanPath}`, fileObj.code));
+                let codeToWrite = fileObj.code;
+                if (cleanPath.startsWith("vite.config") && !codeToWrite.includes("allowedHosts")) {
+                    codeToWrite = `
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    host: '0.0.0.0',
+    port: 3000,
+    strictPort: true,
+    allowedHosts: true,
+  },
+});
+`.trim();
+                }
+                promises.push(sandbox.files.write(`${baseDir}/${cleanPath}`, codeToWrite));
             }
 
             await Promise.all(promises);

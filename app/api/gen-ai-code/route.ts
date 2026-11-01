@@ -264,8 +264,11 @@ function ensureStandardFiles(
         };
     }
 
-    // Ensure root vite.config.js
-    if (!updatedFiles["/vite.config.js"] && !updatedFiles["vite.config.js"]) {
+    // Ensure root vite.config.js with allowedHosts: true
+    const viteKey = Object.keys(updatedFiles).find(
+        (k) => k === "/vite.config.js" || k === "vite.config.js" || k === "/vite.config.ts" || k === "vite.config.ts"
+    );
+    if (!viteKey || !updatedFiles[viteKey].code.includes("allowedHosts")) {
         updatedFiles["/vite.config.js"] = {
             code: `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';

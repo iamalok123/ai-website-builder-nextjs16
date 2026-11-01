@@ -267,6 +267,33 @@ export function CodePanel({
         }
     }, [fileList, files, selectedFile]);
 
+    // Auto-patch legacy vite.config to enforce allowedHosts: true for Vite 6 preview
+    useEffect(() => {
+        if (!fileData || !fileData.files) return;
+        const viteKey = Object.keys(fileData.files).find((k) => k.endsWith("vite.config.js") || k.endsWith("vite.config.ts"));
+        if (viteKey && fileData.files[viteKey]?.code && !fileData.files[viteKey].code.includes("allowedHosts")) {
+            const patchedViteConfig = `import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    host: '0.0.0.0',
+    port: 3000,
+    strictPort: true,
+    allowedHosts: true,
+  },
+});`;
+            onFilePatch({
+                ...fileData,
+                files: {
+                    ...fileData.files,
+                    [viteKey]: { code: patchedViteConfig },
+                },
+            });
+        }
+    }, [fileData, onFilePatch]);
+
     // ─── E2B Sandbox Lifecycle: Start or Sync ─────────────────────────────────────
 
     const startSandbox = useCallback(async (data: FileData, previousId?: string | null) => {
@@ -661,10 +688,18 @@ export function CodePanel({
                                     </a>
                                     <button
                                         onClick={handleRefreshIframe}
-                                        title="Reload preview"
+                                        title="Reload preview iframe"
                                         className="p-1 hover:text-white transition-colors cursor-pointer"
                                     >
                                         <RefreshCw className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                        onClick={() => fileData && startSandbox(fileData, sandboxId)}
+                                        title="Restart cloud sandbox container"
+                                        className="px-2 py-0.5 rounded text-[10px] bg-white/5 hover:bg-orange-500/20 text-zinc-300 hover:text-orange-300 transition-colors cursor-pointer border border-white/5 flex items-center gap-1"
+                                    >
+                                        <RefreshCw className="h-2.5 w-2.5" />
+                                        <span>Restart</span>
                                     </button>
                                 </div>
                             </div>
