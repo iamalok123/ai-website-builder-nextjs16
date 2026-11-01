@@ -75,20 +75,21 @@ export default function Home() {
   };
 
   return (
-    <main className='min-h-screen bg-black text-white selection:bg-orange-500/30 selection:text-orange-200'>
+    <main className='min-h-screen bg-black text-white selection:bg-orange-500/30 selection:text-orange-200 overflow-x-clip w-full relative'>
 
       {/* HERO SECTION - HEXAGON BACKGROUND WITH ORANGE THEME & MATCHING INTERFACE */}
-      <section id="hero" className="relative min-h-dvh sm:min-h-0 pt-20 sm:pt-24 pb-8 sm:pb-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex flex-col items-center justify-center">
+      <section id="hero" className="relative min-h-dvh sm:min-h-0 pt-20 sm:pt-24 pb-8 sm:pb-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex flex-col items-center justify-center w-full overflow-hidden">
 
         {/* Ambient Radial Spotlight Glows */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-112 w-md rounded-full bg-orange-600/20 blur-[140px] pointer-events-none" />
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 h-80 w-130 rounded-full bg-amber-500/15 blur-[110px] pointer-events-none" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-72 sm:h-112 w-72 sm:w-md rounded-full bg-orange-600/20 blur-[100px] sm:blur-[140px] pointer-events-none" />
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 h-64 sm:h-80 w-80 sm:w-130 rounded-full bg-amber-500/15 blur-[80px] sm:blur-[110px] pointer-events-none" />
 
         {/* Hexagon Background replacing HoleBackground */}
         <HexagonBackground
+          responsive={true}
           hexagonSize={60}
           hexagonMargin={2.5}
-          className="absolute inset-0 h-full w-full opacity-70 dark:bg-transparent bg-transparent z-0"
+          className="absolute inset-0 h-full w-full opacity-70 dark:bg-transparent bg-transparent z-0 pointer-events-auto"
           style={{
             maskImage:
               "radial-gradient(ellipse at center, rgba(0,0,0,1) 0%, rgba(0,0,0,0.55) 65%, transparent 100%)",
@@ -170,14 +171,14 @@ export default function Home() {
             </div>
 
             {/* Interactive Dual Marquee Prompt Suggestions */}
-            <div className="marquee-group relative mt-6 w-full max-w-6xl overflow-hidden py-2 pointer-events-auto space-y-3 mask-[linear-gradient(to_right,transparent_0%,black_10%,black_90%,transparent_100%)]">
+            <div className="marquee-group relative mt-6 w-full max-w-full overflow-hidden py-2 pointer-events-none space-y-2.5 sm:space-y-3 mask-[linear-gradient(to_right,transparent_0%,black_10%,black_90%,transparent_100%)]">
               {/* Row 1 - Marquee Scroll Left */}
               <div className="animate-marquee-scroll flex w-max gap-3 items-center">
                 {[...SUGGESTIONS.slice(0, 8), ...SUGGESTIONS.slice(0, 8), ...SUGGESTIONS.slice(0, 8)].map((item, idx) => (
                   <button
                     key={`row1-${item.text}-${idx}`}
                     onClick={() => handleSuggestion(item.text)}
-                    className="group/item shrink-0 flex items-center gap-2.5 rounded-full border border-orange-500/30 bg-zinc-950/85 px-4 py-2 text-xs font-semibold text-zinc-100 shadow-md backdrop-blur-xl transition-all duration-300 hover:border-orange-400/90 hover:bg-orange-950/70 hover:text-white hover:shadow-[0_0_22px_rgba(249,115,22,0.45)] hover:scale-[1.03] active:scale-[0.97] cursor-pointer whitespace-nowrap"
+                    className="group/item shrink-0 flex items-center gap-2.5 rounded-full border border-orange-500/30 bg-zinc-950/85 px-4 py-2 text-xs font-semibold text-zinc-100 shadow-md backdrop-blur-xl transition-all duration-300 hover:border-orange-400/90 hover:bg-orange-950/70 hover:text-white hover:shadow-[0_0_22px_rgba(249,115,22,0.45)] hover:scale-[1.03] active:scale-[0.97] cursor-pointer whitespace-nowrap pointer-events-auto"
                   >
                     <span className="text-sm select-none transition-transform group-hover/item:scale-125 duration-300">{item.icon}</span>
                     <span className="rounded-md border border-orange-500/30 bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-orange-300 group-hover/item:bg-orange-500/30 group-hover/item:text-orange-200 transition-colors">{item.tag}</span>
@@ -193,7 +194,7 @@ export default function Home() {
                   <button
                     key={`row2-${item.text}-${idx}`}
                     onClick={() => handleSuggestion(item.text)}
-                    className="group/item shrink-0 flex items-center gap-2.5 rounded-full border border-orange-500/30 bg-zinc-950/85 px-4 py-2 text-xs font-semibold text-zinc-100 shadow-md backdrop-blur-xl transition-all duration-300 hover:border-orange-400/90 hover:bg-orange-950/70 hover:text-white hover:shadow-[0_0_22px_rgba(249,115,22,0.45)] hover:scale-[1.03] active:scale-[0.97] cursor-pointer whitespace-nowrap"
+                    className="group/item shrink-0 flex items-center gap-2.5 rounded-full border border-orange-500/30 bg-zinc-950/85 px-4 py-2 text-xs font-semibold text-zinc-100 shadow-md backdrop-blur-xl transition-all duration-300 hover:border-orange-400/90 hover:bg-orange-950/70 hover:text-white hover:shadow-[0_0_22px_rgba(249,115,22,0.45)] hover:scale-[1.03] active:scale-[0.97] cursor-pointer whitespace-nowrap pointer-events-auto"
                   >
                     <span className="text-sm select-none transition-transform group-hover/item:scale-125 duration-300">{item.icon}</span>
                     <span className="rounded-md border border-orange-500/30 bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-orange-300 group-hover/item:bg-orange-500/30 group-hover/item:text-orange-200 transition-colors">{item.tag}</span>
