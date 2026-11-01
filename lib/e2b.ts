@@ -97,6 +97,145 @@ export default defineConfig({
 });
 `.trim();
 
+export const SQLITE_SHIM_CODE = `
+import fs from 'node:fs';
+import path from 'node:path';
+
+export class DatabaseSync {
+  constructor(filename = './database.sqlite') {
+    this.jsonFile = filename.endsWith('.json') ? filename : filename.replace(/\\.[^.]+$/, '') + '.json';
+    this.store = {};
+    try {
+      if (fs.existsSync(this.jsonFile)) {
+        this.store = JSON.parse(fs.readFileSync(this.jsonFile, 'utf-8'));
+      }
+    } catch {
+      this.store = {};
+    }
+  }
+
+  _persist() {
+    try {
+      fs.writeFileSync(this.jsonFile, JSON.stringify(this.store, null, 2), 'utf-8');
+    } catch (e) {
+      console.error('[DatabaseSync Shim] Persist error:', e);
+    }
+  }
+
+  exec(sql) {
+    const match = sql.match(/CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?([a-zA-Z0-9_]+)/i);
+    if (match && match[1]) {
+      const table = match[1].toLowerCase();
+      if (!this.store[table]) {
+        this.store[table] = [];
+        this._persist();
+      }
+    }
+  }
+
+  prepare(sql) {
+    const trimmed = sql.trim();
+    const self = this;
+
+    if (/^SELECT/i.test(trimmed)) {
+      const match = trimmed.match(/FROM\\s+([a-zA-Z0-9_]+)/i);
+      const table = match ? match[1].toLowerCase() : 'items';
+      return {
+        all(...args) {
+          const rows = self.store[table] || [];
+          if (/WHERE\\s+id\\s*=\\s*\\?/i.test(trimmed) && args.length > 0) {
+            return rows.filter(r => Number(r.id) === Number(args[0]));
+          }
+          return [...rows];
+        },
+        get(...args) {
+          const rows = self.store[table] || [];
+          if (/WHERE\\s+id\\s*=\\s*\\?/i.test(trimmed) && args.length > 0) {
+            return rows.find(r => Number(r.id) === Number(args[0])) || null;
+          }
+          return rows[0] || null;
+        },
+        run() { return { changes: 0 }; }
+      };
+    }
+
+    if (/^INSERT/i.test(trimmed)) {
+      const match = trimmed.match(/INTO\\s+([a-zA-Z0-9_]+)\\s*\\(([^)]+)\\)/i);
+      const table = match ? match[1].toLowerCase() : 'items';
+      const cols = match ? match[2].split(',').map(c => c.trim()) : [];
+      return {
+        run(...args) {
+          if (!self.store[table]) self.store[table] = [];
+          const rows = self.store[table];
+          const nextId = rows.length > 0 ? Math.max(...rows.map(r => Number(r.id) || 0)) + 1 : 1;
+          const newRow = { id: nextId };
+          cols.forEach((col, idx) => {
+            newRow[col] = args[idx] !== undefined ? args[idx] : null;
+          });
+          newRow.created_at = newRow.created_at || new Date().toISOString();
+          rows.push(newRow);
+          self._persist();
+          return { lastInsertRowid: nextId, changes: 1 };
+        },
+        all() { return []; },
+        get() { return null; }
+      };
+    }
+
+    if (/^UPDATE/i.test(trimmed)) {
+      const match = trimmed.match(/UPDATE\\s+([a-zA-Z0-9_]+)/i);
+      const table = match ? match[1].toLowerCase() : 'items';
+      return {
+        run(...args) {
+          const rows = self.store[table] || [];
+          const id = Number(args[args.length - 1]);
+          const row = rows.find(r => Number(r.id) === id);
+          if (row) {
+            const setMatches = [...trimmed.matchAll(/([a-zA-Z0-9_]+)\\s*=\\s*\\?/gi)];
+            setMatches.forEach((m, idx) => {
+              if (idx < args.length - 1) {
+                row[m[1]] = args[idx];
+              }
+            });
+            self._persist();
+            return { changes: 1 };
+          }
+          return { changes: 0 };
+        },
+        all() { return []; },
+        get() { return null; }
+      };
+    }
+
+    if (/^DELETE/i.test(trimmed)) {
+      const match = trimmed.match(/FROM\\s+([a-zA-Z0-9_]+)/i);
+      const table = match ? match[1].toLowerCase() : 'items';
+      return {
+        run(...args) {
+          if (!self.store[table]) return { changes: 0 };
+          if (/WHERE\\s+id\\s*=\\s*\\?/i.test(trimmed) && args.length > 0) {
+            const id = Number(args[0]);
+            self.store[table] = self.store[table].filter(r => Number(r.id) !== id);
+          } else if (/WHERE\\s+completed\\s*=\\s*1/i.test(trimmed)) {
+            self.store[table] = self.store[table].filter(r => !r.completed);
+          }
+          self._persist();
+          return { changes: 1 };
+        },
+        all() { return []; },
+        get() { return null; }
+      };
+    }
+
+    return {
+      run() { return { changes: 0 }; },
+      all() { return []; },
+      get() { return null; }
+    };
+  }
+}
+`.trim();
+
 /**
  * Writes virtual files to disk inside the sandbox and ensures standard configuration files
  */
@@ -249,6 +388,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         }
 
         normalizedFiles["package.json"] = JSON.stringify(packageJson, null, 2);
+
+        // Provide sqlite-shim.js and sanitize node:sqlite imports for Node 20 runtime compatibility
+        if (normalizedFiles["server.js"]) {
+            normalizedFiles["sqlite-shim.js"] = SQLITE_SHIM_CODE;
+            if (normalizedFiles["server.js"].includes("node:sqlite")) {
+                normalizedFiles["server.js"] = normalizedFiles["server.js"].replace(/['"]node:sqlite['"]/g, "'./sqlite-shim.js'");
+            }
+        }
     }
 
     // Ensure working directory exists and any standard directories
@@ -309,9 +456,9 @@ export async function startSandboxApp(
         await sandbox.commands.run(
             `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || npm install --silent --no-audit --no-fund --force || true)`
         );
-        // Start Node/Express backend if server.js exists
+        // Ensure port 3001 is clean and start Node/Express backend if server.js exists
         await sandbox.commands.run(
-            `cd ${baseDir} && if [ -f server.js ]; then node server.js > /tmp/backend.log 2>&1 & fi`
+            `cd ${baseDir} && (fuser -k 3001/tcp 2>/dev/null || true); if [ -f server.js ]; then (nohup node server.js > /tmp/backend.log 2>&1 &); fi`
         );
         // Start Vite dev server in background with log redirection for diagnosis
         await sandbox.commands.run(`cd ${baseDir} && npm run dev > /tmp/dev-server.log 2>&1`, { background: true });

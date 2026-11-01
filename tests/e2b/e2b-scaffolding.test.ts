@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { STANDARD_VITE_CONFIG } from "@/lib/e2b";
+import { STANDARD_VITE_CONFIG, SQLITE_SHIM_CODE } from "@/lib/e2b";
 
 function generateIndexHtml(title: string): string {
   return `
@@ -131,5 +131,21 @@ describe("E2B Scaffolding & Configuration Generator", () => {
     expect(parsed.dependencies["lodash-es"]).toBe("^4.17.21");
     expect(parsed.dependencies.react).toBe("^19.0.0");
     expect(parsed.devDependencies["@vitejs/plugin-react"]).toBe("^4.3.4");
+  });
+
+  it("should provide SQLITE_SHIM_CODE with DatabaseSync class and SQLite statements support", () => {
+    expect(SQLITE_SHIM_CODE).toContain("export class DatabaseSync");
+    expect(SQLITE_SHIM_CODE).toContain("exec(sql)");
+    expect(SQLITE_SHIM_CODE).toContain("prepare(sql)");
+    expect(SQLITE_SHIM_CODE).toContain("all(");
+    expect(SQLITE_SHIM_CODE).toContain("run(");
+    expect(SQLITE_SHIM_CODE).toContain("lastInsertRowid");
+  });
+
+  it("should sanitize server.js node:sqlite import into local shim", () => {
+    const rawServerJs = `import express from 'express';\nimport { DatabaseSync } from 'node:sqlite';\nconst db = new DatabaseSync('./database.sqlite');`;
+    const sanitized = rawServerJs.replace(/['"]node:sqlite['"]/g, "'./sqlite-shim.js'");
+    expect(sanitized).toContain("from './sqlite-shim.js'");
+    expect(sanitized).not.toContain("node:sqlite");
   });
 });

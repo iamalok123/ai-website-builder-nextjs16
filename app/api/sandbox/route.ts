@@ -7,6 +7,7 @@ import {
     writeFilesToSandbox,
     startSandboxApp,
     STANDARD_VITE_CONFIG,
+    SQLITE_SHIM_CODE,
 } from "@/lib/e2b";
 import type { FileData } from "@/types/workspace";
 
@@ -120,6 +121,11 @@ export async function POST(req: NextRequest) {
                     hasPackageJsonChange = true;
                 } else if (cleanPath === "server.js") {
                     hasServerJsChange = true;
+                    if (codeToWrite.includes("node:sqlite")) {
+                        codeToWrite = codeToWrite.replace(/['"]node:sqlite['"]/g, "'./sqlite-shim.js'");
+                        normalizedSync["server.js"] = codeToWrite;
+                    }
+                    normalizedSync["sqlite-shim.js"] = SQLITE_SHIM_CODE;
                 }
             }
 
@@ -152,7 +158,7 @@ export async function POST(req: NextRequest) {
 
             if (hasServerJsChange) {
                 sandbox.commands.run(
-                    `cd ${baseDir} && (pkill -f 'node server.js' || true); if [ -f server.js ]; then node server.js > /tmp/backend.log 2>&1 & fi`,
+                    `cd ${baseDir} && (fuser -k 3001/tcp 2>/dev/null || pkill -f 'node server.js' || true); if [ -f server.js ]; then (nohup node server.js > /tmp/backend.log 2>&1 &); fi`,
                     { background: true }
                 ).catch((err) => console.warn("[E2B Sandbox Sync] Backend restart warning:", err));
             }
