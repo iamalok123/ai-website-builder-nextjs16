@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import CodeMirror, { ViewUpdate, EditorView } from "@uiw/react-codemirror";
 import { Copy, Check, FileCode, FileText, FileJson } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +20,29 @@ interface CodeMirrorEditorProps {
     isSyncing?: boolean;
     getFileIcon?: (filename: string) => React.ReactNode;
 }
+
+const textEncoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
+
+const basicSetupConfig = {
+    lineNumbers: true,
+    highlightActiveLineGutter: true,
+    highlightActiveLine: true,
+    foldGutter: true,
+    dropCursor: true,
+    allowMultipleSelections: true,
+    indentOnInput: true,
+    bracketMatching: true,
+    closeBrackets: true,
+    autocompletion: false,
+    rectangularSelection: true,
+    crosshairCursor: true,
+    highlightSelectionMatches: true,
+    closeBracketsKeymap: true,
+    defaultKeymap: true,
+    searchKeymap: true,
+    historyKeymap: true,
+    foldKeymap: true,
+};
 
 function defaultGetFileIcon(filename: string) {
     if (filename.endsWith(".jsx") || filename.endsWith(".tsx")) {
@@ -50,6 +73,15 @@ export function CodeMirrorEditor({
 }: CodeMirrorEditorProps) {
     const [copied, setCopied] = useState(false);
     const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
+    const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (copyTimeoutRef.current) {
+                clearTimeout(copyTimeoutRef.current);
+            }
+        };
+    }, []);
 
     // Copy current file content
     const handleCopyFile = async () => {
@@ -58,7 +90,8 @@ export function CodeMirrorEditor({
             await navigator.clipboard.writeText(value);
             setCopied(true);
             toast.success("File content copied to clipboard!");
-            setTimeout(() => setCopied(false), 2000);
+            if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+            copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
         } catch {
             toast.error("Failed to copy file content");
         }
@@ -96,7 +129,7 @@ export function CodeMirrorEditor({
 
     const byteSize = useMemo(() => {
         if (!value) return 0;
-        return new TextEncoder().encode(value).length;
+        return textEncoder ? textEncoder.encode(value).length : value.length;
     }, [value]);
 
     const languageName = useMemo(() => getLanguageName(filePath), [filePath]);
@@ -156,26 +189,7 @@ export function CodeMirrorEditor({
                     onChange={onChange}
                     onUpdate={handleUpdate}
                     readOnly={readOnly}
-                    basicSetup={{
-                        lineNumbers: true,
-                        highlightActiveLineGutter: true,
-                        highlightActiveLine: true,
-                        foldGutter: true,
-                        dropCursor: true,
-                        allowMultipleSelections: true,
-                        indentOnInput: true,
-                        bracketMatching: true,
-                        closeBrackets: true,
-                        autocompletion: false,
-                        rectangularSelection: true,
-                        crosshairCursor: true,
-                        highlightSelectionMatches: true,
-                        closeBracketsKeymap: true,
-                        defaultKeymap: true,
-                        searchKeymap: true,
-                        historyKeymap: true,
-                        foldKeymap: true,
-                    }}
+                    basicSetup={basicSetupConfig}
                     placeholder="// Select a file from the explorer on the left..."
                 />
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { Trash2, MessageSquare, ArrowUpRight, Loader2, Zap, Sparkles } from "lucide-react";
@@ -12,15 +12,16 @@ interface ProjectCardProps {
 }
 
 export function ProjectCard({ projects }: ProjectCardProps) {
-    const [projectList, setProjectList] = useState<ProjectSummary[]>(projects);
+    const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
     const [navigatingId, setNavigatingId] = useState<string | null>(null);
 
-    useEffect(() => {
-        setProjectList(projects);
-    }, [projects]);
+    const projectList = useMemo(
+        () => projects.filter((p) => !deletedIds.has(p.id)),
+        [projects, deletedIds]
+    );
 
     const handleDeleted = (id: string) => {
-        setProjectList((prev) => prev.filter((p) => p.id !== id));
+        setDeletedIds((prev) => new Set(prev).add(id));
     };
 
     if (projectList.length === 0) {

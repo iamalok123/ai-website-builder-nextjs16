@@ -251,24 +251,25 @@ export function CodePanel({
     const fileList = useMemo(() => Object.keys(files), [files]);
     const fileTree = useMemo(() => buildFileTree(fileList), [fileList]);
 
-    // Ensure selected file exists in file list
-    useEffect(() => {
-        if (fileList.length > 0) {
-            const hasExact = files[selectedFile];
-            const hasAlt1 = selectedFile.startsWith("/") && files[selectedFile.slice(1)];
-            const hasAlt2 = !selectedFile.startsWith("/") && files["/" + selectedFile];
+    // Active file resolution with fallback to entry files if selectedFile is not in file tree
+    const activeFile = useMemo(() => {
+        if (fileList.length === 0) return selectedFile;
+        const hasExact = files[selectedFile];
+        const hasAlt1 = selectedFile.startsWith("/") && files[selectedFile.slice(1)];
+        const hasAlt2 = !selectedFile.startsWith("/") && files["/" + selectedFile];
 
-            if (!hasExact && !hasAlt1 && !hasAlt2) {
-                const defaultFile =
-                    files["/src/App.jsx"] ? "/src/App.jsx" :
-                    files["/App.jsx"] ? "/App.jsx" :
-                    files["/main.py"] ? "/main.py" :
-                    files["/server.js"] ? "/server.js" :
-                    files["/index.html"] ? "/index.html" :
-                    fileList[0];
-                setSelectedFile(defaultFile);
-            }
+        if (hasExact || hasAlt1 || hasAlt2) {
+            return selectedFile;
         }
+
+        return (
+            files["/src/App.jsx"] ? "/src/App.jsx" :
+            files["/App.jsx"] ? "/App.jsx" :
+            files["/main.py"] ? "/main.py" :
+            files["/server.js"] ? "/server.js" :
+            files["/index.html"] ? "/index.html" :
+            fileList[0] || selectedFile
+        );
     }, [fileList, files, selectedFile]);
 
     // Auto-patch legacy vite.config to enforce allowedHosts: true, polling, and HMR for Vite 6 preview
@@ -383,8 +384,10 @@ export default defineConfig({
 
         const currentFiles = fileData.files;
         if (!sandboxId) {
-            startSandbox(fileData);
             prevFilesRef.current = currentFiles;
+            queueMicrotask(() => {
+                startSandbox(fileData);
+            });
             return;
         }
 
@@ -397,18 +400,20 @@ export default defineConfig({
         }
 
         if (Object.keys(changedFiles).length > 0) {
-            syncSandboxFiles(sandboxId, changedFiles);
             prevFilesRef.current = currentFiles;
+            queueMicrotask(() => {
+                syncSandboxFiles(sandboxId, changedFiles);
+            });
         }
     }, [fileData, isGenerating, sandboxId, startSandbox, syncSandboxFiles]);
 
     // Resolve code of selected file with leading-slash tolerance
     const selectedCode = useMemo(() => {
-        if (files[selectedFile]) return files[selectedFile].code;
-        if (selectedFile.startsWith("/") && files[selectedFile.slice(1)]) return files[selectedFile.slice(1)].code;
-        if (!selectedFile.startsWith("/") && files["/" + selectedFile]) return files["/" + selectedFile].code;
+        if (files[activeFile]) return files[activeFile].code;
+        if (activeFile.startsWith("/") && files[activeFile.slice(1)]) return files[activeFile.slice(1)].code;
+        if (!activeFile.startsWith("/") && files["/" + activeFile]) return files["/" + activeFile].code;
         return "";
-    }, [files, selectedFile]);
+    }, [files, activeFile]);
 
     const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -423,9 +428,9 @@ export default defineConfig({
 
     // Handle manual code edits with debounced container sync
     const handleCodeChange = (newCode: string) => {
-        if (!fileData || !selectedFile) return;
+        if (!fileData || !activeFile) return;
 
-        let targetKey = selectedFile;
+        let targetKey = activeFile;
         if (!files[targetKey]) {
             if (targetKey.startsWith("/") && files[targetKey.slice(1)]) targetKey = targetKey.slice(1);
             else if (!targetKey.startsWith("/") && files["/" + targetKey]) targetKey = "/" + targetKey;
@@ -480,8 +485,8 @@ export default defineConfig({
                 debounceTimerRef.current = null;
             }
             setIsSyncing(false);
-            if (sandboxId && selectedFile) {
-                let targetKey = selectedFile;
+            if (sandboxId && activeFile) {
+                let targetKey = activeFile;
                 if (!files[targetKey]) {
                     if (targetKey.startsWith("/") && files[targetKey.slice(1)]) targetKey = targetKey.slice(1);
                     else if (!targetKey.startsWith("/") && files["/" + targetKey]) targetKey = "/" + targetKey;
@@ -675,9 +680,9 @@ export default defineConfig({
                                     <ExternalLink className="h-3.5 w-3.5" />
                                 </a>
                             </div>
-                        ) : activeTab === "code" && selectedFile ? (
+                        ) : activeTab === "code" && activeFile ? (
                             <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-black/40 border border-white/5 rounded-full text-xs font-mono text-zinc-400">
-                                <span className="text-zinc-300 truncate max-w-xs">{selectedFile}</span>
+                                <span className="text-zinc-300 truncate max-w-xs">{activeFile}</span>
                             </div>
                         ) : null}
                     </div>
@@ -852,7 +857,7 @@ export default defineConfig({
                                     key={node.path}
                                     node={node}
                                     depth={0}
-                                    selectedFile={selectedFile}
+                                    selectedFile={activeFile}
                                     onSelectFile={setSelectedFile}
                                     collapsedFolders={collapsedFolders}
                                     onToggleFolder={handleToggleFolder}
@@ -864,7 +869,7 @@ export default defineConfig({
                     {/* Right: Code Editor powered by CodeMirror 6 */}
                     <CodeMirrorEditor
                         value={selectedCode}
-                        filePath={selectedFile}
+                        filePath={activeFile}
                         onChange={handleCodeChange}
                         readOnly={isGenerating}
                         isSyncing={isSyncing}
