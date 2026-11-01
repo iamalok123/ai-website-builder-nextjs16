@@ -86,7 +86,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Invalid action. Expected start, sync, or stop" }, { status: 400 });
     } catch (error: unknown) {
         console.error("[E2B Sandbox API Error]:", error);
-        const message = error instanceof Error ? error.message : "Internal sandbox error";
-        return NextResponse.json({ error: message }, { status: 500 });
+        const errObj = error as { result?: { stderr?: string; stdout?: string }; message?: string };
+        const detailedMessage =
+            errObj?.result?.stderr?.trim() ||
+            errObj?.message ||
+            "Internal sandbox error";
+        return NextResponse.json({ error: detailedMessage }, { status: 500 });
     }
 }

@@ -215,20 +215,17 @@ export async function startSandboxApp(
             { background: true }
         );
     } else {
-        // Install dependencies & start Vite dev server
-        await sandbox.commands.run(`cd ${baseDir} && npm install --silent --no-audit --no-fund`);
+        // Install dependencies & start Vite dev server with legacy peer deps fallback
+        await sandbox.commands.run(
+            `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || npm install --silent --no-audit --no-fund --force)`
+        );
         await sandbox.commands.run(`cd ${baseDir} && npm run dev`, { background: true });
     }
 
     // Wait up to 15 seconds for the dev server to start listening on port 3000
     try {
         await sandbox.commands.run(
-            `for i in $(seq 1 30); do
-                if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1; then
-                    exit 0
-                fi
-                sleep 0.5
-            done`,
+            `for i in $(seq 1 30); do if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1; then exit 0; fi; sleep 0.5; done; exit 0`,
             { timeoutMs: 18000 }
         );
     } catch {
