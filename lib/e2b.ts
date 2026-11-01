@@ -111,9 +111,10 @@ export async function writeFilesToSandbox(
             writePromises.push(sandbox.files.write(`${baseDir}/App.jsx`, srcApp.code));
         }
 
-        // Ensure standard Vite + React config if not provided
-        if (!files["/vite.config.js"] && !files["vite.config.js"]) {
-            const viteConfig = `
+        // Ensure standard Vite + React config with allowedHosts: true for Vite 6
+        let viteConfig = files["/vite.config.js"]?.code || files["vite.config.js"]?.code;
+        if (!viteConfig || !viteConfig.includes("allowedHosts")) {
+            viteConfig = `
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -123,11 +124,12 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 3000,
     strictPort: true,
+    allowedHosts: true,
   },
 });
 `;
-            writePromises.push(sandbox.files.write(`${baseDir}/vite.config.js`, viteConfig));
         }
+        writePromises.push(sandbox.files.write(`${baseDir}/vite.config.js`, viteConfig));
 
         // Ensure index.html exists
         if (!files["/index.html"] && !files["index.html"]) {
