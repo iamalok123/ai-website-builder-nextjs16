@@ -360,20 +360,31 @@ export default defineConfig({
         }
     }, []);
 
-    // Initial boot on new files
-    const prevFileKeysRef = useRef<string>("");
+    // Track file contents to detect both structural and content modifications from AI generations
+    const prevFilesRef = useRef<Record<string, { code: string }>>({});
     useEffect(() => {
         if (isGenerating || !fileData || !fileData.files || Object.keys(fileData.files).length === 0) {
             return;
         }
 
-        const currentKeys = Object.keys(fileData.files).sort().join("|");
+        const currentFiles = fileData.files;
         if (!sandboxId) {
             startSandbox(fileData);
-            prevFileKeysRef.current = currentKeys;
-        } else if (currentKeys !== prevFileKeysRef.current) {
-            syncSandboxFiles(sandboxId, fileData.files);
-            prevFileKeysRef.current = currentKeys;
+            prevFilesRef.current = currentFiles;
+            return;
+        }
+
+        // Calculate diff between previous files and new incoming files
+        const changedFiles: Record<string, { code: string }> = {};
+        for (const [path, fileObj] of Object.entries(currentFiles)) {
+            if (!prevFilesRef.current[path] || prevFilesRef.current[path].code !== fileObj?.code) {
+                changedFiles[path] = fileObj;
+            }
+        }
+
+        if (Object.keys(changedFiles).length > 0) {
+            syncSandboxFiles(sandboxId, changedFiles);
+            prevFilesRef.current = currentFiles;
         }
     }, [fileData, isGenerating, sandboxId, startSandbox, syncSandboxFiles]);
 
@@ -385,7 +396,18 @@ export default defineConfig({
         return "";
     }, [files, selectedFile]);
 
-    // Handle manual code edits
+    const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Cleanup debounce timer on unmount
+    useEffect(() => {
+        return () => {
+            if (debounceTimerRef.current) {
+                clearTimeout(debounceTimerRef.current);
+            }
+        };
+    }, []);
+
+    // Handle manual code edits with debounced container sync
     const handleCodeChange = (newCode: string) => {
         if (!fileData || !selectedFile) return;
 
@@ -406,9 +428,30 @@ export default defineConfig({
             title: fileData.title,
         });
 
-        if (sandboxId) {
-            syncSandboxFiles(sandboxId, { [targetKey]: { code: newCode } });
+        // Update local tracking ref so generation effect doesn't duplicate the sync
+        prevFilesRef.current = updatedFiles;
+
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
         }
+
+        if (sandboxId) {
+            debounceTimerRef.current = setTimeout(() => {
+                syncSandboxFiles(sandboxId, { [targetKey]: { code: newCode } });
+            }, 350);
+        }
+    };
+
+    // Instant tab switch with immediate debounce flush
+    const handleTabChange = (val: string) => {
+        if (val === "preview" && debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+            debounceTimerRef.current = null;
+            if (sandboxId && selectedFile && files[selectedFile]) {
+                syncSandboxFiles(sandboxId, { [selectedFile]: files[selectedFile] });
+            }
+        }
+        setActiveTab(val as ActiveTab);
     };
 
     // Toggle folder collapse
@@ -489,7 +532,7 @@ export default defineConfig({
         <div className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#0d0d12] text-white">
             <Tabs
                 value={activeTab}
-                onValueChange={(val) => setActiveTab(val as ActiveTab)}
+                onValueChange={handleTabChange}
                 className="flex h-full w-full flex-col overflow-hidden"
             >
                 {/* ── Header Toolbar ── */}
