@@ -78,19 +78,32 @@ function trimHistory(messages: Message[]): Message[] {
 
 // ─── System prompts ────────────────────────────────────────────────────────────
 
-const DEFAULT_SYSTEM_PROMPT = `You are an expert full-stack developer specializing in modern web applications with Vite, React 19, Tailwind CSS, and Node/Express.
-Your job is to generate complete, working, production-grade applications based on user prompts.
+const DEFAULT_SYSTEM_PROMPT = `You are an expert full-stack developer specializing in modern web applications with Vite, React 19, Tailwind CSS, Node/Express, and file-based SQLite.
+Your job is to generate complete, high-performance, production-grade full-stack applications.
+
+CRITICAL ARCHITECTURE:
+1. Every application with interactive data, tasks, notes, user entries, or forms MUST be a true FULL-STACK application with both a frontend (/App.jsx) and backend (/server.js).
+2. Frontend entry point: /App.jsx (React 19 functional components + Tailwind CSS + Lucide React icons).
+3. Backend entry point: /server.js (Express.js running on port 3001 with CORS).
+   - Use Node.js built-in file-backed SQLite: import { DatabaseSync } from 'node:sqlite';
+   - Open or create the database file: const db = new DatabaseSync('./database.sqlite');
+   - Automatically initialize tables on boot: db.exec(\`CREATE TABLE IF NOT EXISTS items (...);\`);
+   - Implement clean REST API routes on /api/... (GET, POST, PUT, DELETE) using db.prepare(...).
+   - The frontend communicates with the backend via standard fetch('/api/...') calls (which Vite dev server automatically proxies to port 3001).
+4. TOKEN SAVING & HIGH-DENSITY RULES:
+   - Be concise and token-efficient. Prefer writing clean, self-contained components in /App.jsx rather than splitting into many tiny files.
+   - Keep /server.js compact and focused (<70 lines) with clean REST routes and SQLite prepared statements.
+   - Do NOT output unnecessary boilerplate or verbose comments. Maximize functionality per token.
 
 RULES:
 1. Always respond with a valid JSON object — no markdown fences, no extra text.
 2. The JSON must match this exact shape:
 {
-  "assistantMessage": "<brief explanation of what you built/changed>",
-  "title": "<short 2-4 word title for the app, e.g. 'Todo List App'>",
+  "assistantMessage": "<brief 1-2 sentence explanation of what you built>",
+  "title": "<short 2-4 word title, e.g. 'Kanban Task Board'>",
   "files": {
-    "/App.jsx": { "code": "<full file content>" },
-    "/components/SomeComponent.jsx": { "code": "<full file content>" },
-    "/server.js": { "code": "<optional express backend if user requires a backend or api>" }
+    "/App.jsx": { "code": "<full frontend component>" },
+    "/server.js": { "code": "<full express backend on port 3001 with node:sqlite>" }
   },
   "dependencies": {
     "some-package": "latest"
@@ -99,14 +112,13 @@ RULES:
 3. Use React (functional components + modern hooks). Use .jsx file extensions for all component files.
 4. Use Tailwind CSS for all styling. Do not use CSS modules or inline styles unless absolutely necessary.
 5. The frontend entry point must always be /App.jsx and must export a default component.
-6. If the user prompt asks for a backend, database, or API, provide an Express.js server in /server.js.
-7. All imports must reference files you include in "files" or packages in "dependencies".
-8. Do not include react, react-dom, or tailwindcss in "dependencies" — they are always provided.
-9. When modifying existing code, ONLY include the files you have changed in the "files" object. Do not return untouched files.
-10. Keep code clean, readable, modular, and production-quality.
-11. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.
-12. CRITICAL TAILWIND FIX: If you need dynamic class names with template literals, use EXACTLY this syntax: className={\`my-class \${variable}\`}. Do NOT use regular quotes. DO NOT accidentally add extra braces or brackets at the end like \`}\`}> or \`} />. This causes fatal syntax errors.
-13. CRITICAL: Double-check all React code for syntax errors before responding. Ensure all JSX template literals (className={\`...\`}) are perfectly formatted with matching brackets and backticks.`;
+6. All imports must reference files you include in "files" or packages in "dependencies".
+7. Do not include react, react-dom, tailwindcss, express, or cors in "dependencies" — they are pre-configured.
+8. When modifying existing code, ONLY include the files you have changed in the "files" object. Do not return untouched files.
+9. Keep code clean, readable, modular, and production-quality.
+10. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.
+11. CRITICAL TAILWIND FIX: If you need dynamic class names with template literals, use EXACTLY this syntax: className={\`my-class \${variable}\`}. Do NOT use regular quotes. DO NOT accidentally add extra braces or brackets at the end like \`}\`}> or \`} />. This causes fatal syntax errors.
+12. CRITICAL: Double-check all React code for syntax errors before responding. Ensure all JSX template literals (className={\`...\`}) are perfectly formatted with matching brackets and backticks.`;
 
 const PYTHON_SYSTEM_PROMPT = `You are an expert Python and modern web developer specializing in FastAPI, Flask, and interactive Python web applications.
 Your job is to generate complete, working, production-grade Python web applications based on user prompts.
@@ -302,6 +314,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     }
 
     // Ensure package.json
+    const hasServerJs = Boolean(updatedFiles["/server.js"] || updatedFiles["server.js"]);
+    const backendDeps = hasServerJs ? { express: "^4.21.2", cors: "^2.8.5" } : {};
+    const devScript = hasServerJs
+        ? "node server.js & vite --host 0.0.0.0 --port 3000"
+        : "vite --host 0.0.0.0 --port 3000";
+
     if (!updatedFiles["/package.json"] && !updatedFiles["package.json"]) {
         updatedFiles["/package.json"] = {
             code: JSON.stringify(
@@ -310,7 +328,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                     version: "1.0.0",
                     type: "module",
                     scripts: {
-                        dev: "vite --host 0.0.0.0 --port 3000",
+                        dev: devScript,
                         build: "vite build",
                         start: "node server.js",
                     },
@@ -320,6 +338,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                         "lucide-react": "^1.16.0",
                         clsx: "^2.1.1",
                         "tailwind-merge": "^3.0.0",
+                        ...backendDeps,
                         ...dependencies,
                     },
                     devDependencies: {
@@ -419,11 +438,17 @@ export async function POST(req: NextRequest) {
                 } catch { }
             };
 
+            // Keepalive ping every 2.5s to prevent mobile proxy & cellular timeouts
+            const pingInterval = setInterval(() => {
+                if (isClosed) return;
+                enqueue(": keepalive\n\n");
+            }, 2500);
+
             try {
                 const contents = await buildContents(messages, fileData);
 
                 const geminiStream = await ai.models.generateContentStream({
-                    model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+                    model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
                     contents,
                     config: {
                         systemInstruction: getSystemPrompt(messages),
@@ -439,7 +464,6 @@ export async function POST(req: NextRequest) {
                 let lastEmitTime = 0; // throttle thought emissions
 
                 for await (const chunk of geminiStream) {
-                    if (isClosed) break;
                     const parts = chunk.candidates?.[0]?.content?.parts ?? [];
 
                     for (const part of parts) {
@@ -525,15 +549,9 @@ export async function POST(req: NextRequest) {
                     title: finalTitle,
                 };
 
-
-
-
-
-                // — Upsert workspace + deduct credit (single transaction) ———————
-                // Atomic: if either the DB write or the credit deduction fails,
-                // neither happens – user never loses a credit on a failed save.
-                // workspaceId is null on first generation → create, string → update.
-
+                // — Upsert workspace + deduct credit ———————
+                // Unconditional DB save: Even if mobile connection had a momentary hiccup,
+                // the generated project is ALWAYS saved to PostgreSQL so the user never loses their work.
                 enqueue(sseEvent("status", { message: "Saving…" }));
 
                 const lastUserMessage = messages[messages.length - 1];
@@ -542,61 +560,75 @@ export async function POST(req: NextRequest) {
                     { role: "assistant", content: assistantMessage },
                 ];
 
+                let finalWorkspaceId = workspaceId;
 
-                // If client aborted or closed connection, do not save or charge credits
-                if (isClosed) return;
-
-                const [workspace] = await db.$transaction([
-                    workspaceId
-                        ? db.workspace.update({
-                            where: { id: workspaceId, userId },
+                try {
+                    const [workspace] = await db.$transaction([
+                        workspaceId
+                            ? db.workspace.update({
+                                where: { id_userId: { id: workspaceId, userId } },
+                                data: {
+                                    messages: updatedMessages as never,
+                                    fileData: newFileData as never,
+                                },
+                            })
+                            : db.workspace.create({
+                                data: {
+                                    userId,
+                                    title: aiTitle ?? lastUserMessage.content.slice(0, 80),
+                                    messages: updatedMessages as never,
+                                    fileData: newFileData as never,
+                                },
+                            }),
+                        db.user.updateMany({
+                            where: {
+                                id: userId,
+                                credits: { gte: CREDIT_COST_PER_GENERATION },
+                            },
+                            data: {
+                                credits: { decrement: CREDIT_COST_PER_GENERATION },
+                            },
+                        }),
+                    ], {
+                        maxWait: 15000,
+                        timeout: 20000,
+                    });
+                    finalWorkspaceId = workspace.id;
+                } catch (dbErr) {
+                    console.error("[gen-ai-code] Primary transaction error, running safe fallback save:", dbErr);
+                    if (workspaceId) {
+                        await db.workspace.update({
+                            where: { id_userId: { id: workspaceId, userId } },
                             data: {
                                 messages: updatedMessages as never,
                                 fileData: newFileData as never,
                             },
-                        })
-                        : db.workspace.create({
+                        }).catch((e) => console.error("Workspace update fallback failed:", e));
+                    } else {
+                        const created = await db.workspace.create({
                             data: {
                                 userId,
                                 title: aiTitle ?? lastUserMessage.content.slice(0, 80),
                                 messages: updatedMessages as never,
                                 fileData: newFileData as never,
                             },
-                        }),
-                    db.user.updateMany({
-                        where: {
-                            id: userId,
-                            credits: { gte: CREDIT_COST_PER_GENERATION },
-                        },
-                        data: {
-                            credits: { decrement: CREDIT_COST_PER_GENERATION },
-                        },
-                    }),
-                ], {
-                    maxWait: 15000, // 15 seconds max wait to connect
-                    timeout: 20000, // 20 seconds max for transaction to run
-                });
+                        }).catch((e) => console.error("Workspace create fallback failed:", e));
+                        if (created) finalWorkspaceId = created.id;
+                    }
+                }
 
-
-
-                // Re-fetch updated credit balance to return accurate value to the client.
-                // The client updates its local credits state from this – no page refresh needed.
+                // Re-fetch updated credit balance
                 const updatedUser = await db.user.findUnique({
                     where: { id: userId },
                     select: { credits: true },
-                });
+                }).catch(() => null);
 
                 revalidatePath("/projects");
 
-
-
-
-                // Emit final result , Final done event 
-                // Client receives this, updates Sandpack with the new files,
-                // adds the assistant message to the chat, and updates the credit badge.
+                // Emit final result done event
                 enqueue(
                     sseEvent("done", {
-                        workspaceId: workspace.id,
+                        workspaceId: finalWorkspaceId,
                         assistantMessage,
                         fileData: newFileData,
                         creditsRemaining: updatedUser?.credits ?? 0,
@@ -613,7 +645,6 @@ export async function POST(req: NextRequest) {
                     cause?: { code?: string };
                 } | null;
 
-                // Parse specific API errors so the user knows what actually happened
                 if (errObj?.status === 429 || errObj?.message?.includes("429") || errObj?.message?.includes("quota")) {
                     errorMessage = "You have exceeded your Gemini API rate limit (Free Tier). Please wait 60 seconds and try again.";
                 } else if (errObj?.status === 503 || errObj?.message?.includes("503")) {
@@ -628,18 +659,18 @@ export async function POST(req: NextRequest) {
                     })
                 );
             } finally {
-                // Always close the stream - whether success, parse error or exception
+                clearInterval(pingInterval);
                 closeStream();
             }
         },
     });
 
-
     return new Response(stream, {
         headers: {
-            "Content-Type": "text/event-stream",
+            "Content-Type": "text/event-stream; charset=utf-8",
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
             "X-Content-Type-Options": "nosniff",
         },
     });

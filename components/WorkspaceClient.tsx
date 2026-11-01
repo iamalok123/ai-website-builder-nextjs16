@@ -80,6 +80,7 @@ export function WorkspaceClient({
     const [isGenerating, setIsGenerating] = useState(false);
     const [statusLog, setStatusLog] = useState<StatusStep[]>([]);
     const [isImproving, setIsImproving] = useState(false);
+    const [mobileView, setMobileView] = useState<"chat" | "preview">("chat");
 
     // AbortController refs — used to cancel in-flight streams
     const generateAbortRef = useRef<AbortController | null>(null);
@@ -237,6 +238,7 @@ export function WorkspaceClient({
                                 setWorkspaceId(event.workspaceId);
                                 setFileData(event.fileData);
                                 setCredits(event.creditsRemaining);
+                                setMobileView("preview");
                                 setMessages((prev) => [
                                     ...prev,
                                     { role: "assistant", content: event.assistantMessage },
@@ -446,11 +448,9 @@ export function WorkspaceClient({
     }, []);
 
 
-    const [mobileView, setMobileView] = useState<"chat" | "preview">("chat");
-
     const toggleMobileView = useCallback(() => {
         setMobileView((prev) => (prev === "chat" ? "preview" : "chat"));
-    }, []);
+    }, [setMobileView]);
 
     return (
         <>

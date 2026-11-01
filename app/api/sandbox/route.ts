@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
             const baseDir = "/home/user/app";
             const normalizedSync: Record<string, string> = {};
             let hasPackageJsonChange = false;
+            let hasServerJsChange = false;
 
             for (const [rawPath, fileObj] of Object.entries(filesToSync)) {
                 const cleanPath = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
@@ -117,6 +118,8 @@ export async function POST(req: NextRequest) {
                     normalizedSync[cleanPath.replace(/^src\//, "")] = codeToWrite;
                 } else if (cleanPath === "package.json") {
                     hasPackageJsonChange = true;
+                } else if (cleanPath === "server.js") {
+                    hasServerJsChange = true;
                 }
             }
 
@@ -145,6 +148,13 @@ export async function POST(req: NextRequest) {
                     `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || true)`,
                     { background: true }
                 ).catch((err) => console.warn("[E2B Sandbox Sync] Background npm install warning:", err));
+            }
+
+            if (hasServerJsChange) {
+                sandbox.commands.run(
+                    `cd ${baseDir} && (pkill -f 'node server.js' || true); if [ -f server.js ]; then node server.js > /tmp/backend.log 2>&1 & fi`,
+                    { background: true }
+                ).catch((err) => console.warn("[E2B Sandbox Sync] Backend restart warning:", err));
             }
 
             return NextResponse.json({ success: true, syncedCount: promises.length });

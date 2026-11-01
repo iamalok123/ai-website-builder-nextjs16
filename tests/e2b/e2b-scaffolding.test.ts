@@ -49,13 +49,35 @@ function generatePackageJson(userDeps: Record<string, string> = {}): string {
 }
 
 describe("E2B Scaffolding & Configuration Generator", () => {
-  it("should generate vite.config.js with allowedHosts: true, polling watch, and HMR clientPort", () => {
+  it("should generate vite.config.js with allowedHosts: true, polling watch, proxy for /api to port 3001, and HMR clientPort", () => {
     expect(STANDARD_VITE_CONFIG).toContain("allowedHosts: true");
     expect(STANDARD_VITE_CONFIG).toContain("host: '0.0.0.0'");
     expect(STANDARD_VITE_CONFIG).toContain("port: 3000");
     expect(STANDARD_VITE_CONFIG).toContain("strictPort: true");
     expect(STANDARD_VITE_CONFIG).toContain("usePolling: true");
     expect(STANDARD_VITE_CONFIG).toContain("clientPort: 443");
+    expect(STANDARD_VITE_CONFIG).toContain("proxy:");
+    expect(STANDARD_VITE_CONFIG).toContain("target: 'http://127.0.0.1:3001'");
+  });
+
+  it("should configure full-stack backend dependencies and dual start script when server.js is present", () => {
+    const hasServerJs = true;
+    const backendDeps = hasServerJs ? { express: "^4.21.2", cors: "^2.8.5" } : {};
+    const devScript = hasServerJs
+      ? "node server.js & vite --host 0.0.0.0 --port 3000"
+      : "vite --host 0.0.0.0 --port 3000";
+
+    const pkg = JSON.parse(
+      JSON.stringify({
+        name: "zephyre-fullstack-app",
+        scripts: { dev: devScript },
+        dependencies: { react: "^19.0.0", ...backendDeps },
+      })
+    );
+
+    expect(pkg.dependencies.express).toBe("^4.21.2");
+    expect(pkg.dependencies.cors).toBe("^2.8.5");
+    expect(pkg.scripts.dev).toContain("node server.js & vite");
   });
 
   it("should generate index.html with Tailwind CDN and correct entry point", () => {

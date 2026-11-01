@@ -3,24 +3,34 @@
 ![Next.js](https://img.shields.io/badge/Next.js-16.2.10-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19.2.4-blue?style=for-the-badge&logo=react)
 ![Node.js](https://img.shields.io/badge/Node.js-22.14.0-339933?style=for-the-badge&logo=node.js)
+![E2B Sandbox](https://img.shields.io/badge/E2B-Cloud_MicroVM_Sandbox-orange?style=for-the-badge)
+![CodeMirror](https://img.shields.io/badge/CodeMirror-v6-black?style=for-the-badge)
+![Vitest](https://img.shields.io/badge/Vitest-54_Tests_Passing-brightgreen?style=for-the-badge)
 ![Prisma](https://img.shields.io/badge/Prisma-7.8.0-1B222D?style=for-the-badge&logo=prisma)
 ![TailwindCSS](https://img.shields.io/badge/Tailwind-v4-38B2AC?style=for-the-badge&logo=tailwind-css)
 ![Google Gemini](https://img.shields.io/badge/Google_Gemini-3.5_Flash-4285F4?style=for-the-badge&logo=google)
 ![Arcjet Security](https://img.shields.io/badge/Arcjet-Shield_%26_Bot_Protection-red?style=for-the-badge)
 ![Render](https://img.shields.io/badge/Render-Deployed-46E3B7?style=for-the-badge&logo=render)
 
-A full-stack, enterprise-grade AI Web Application & Component Builder powered by **Next.js 16 (App Router)**, **React 19**, and **Google Gemini 3.5 Flash**. The platform transforms natural language descriptions and visual inputs into production-ready React applications with real-time SSE AI thought streaming and instant in-browser Sandpack execution.
+A full-stack, enterprise-grade AI Web Application & Component Builder powered by **Next.js 16 (App Router)**, **React 19**, and **Google Gemini 3.5 Flash**. The platform transforms natural language descriptions and visual wireframe inputs into production-ready React applications with real-time SSE AI thought streaming, in-browser CodeMirror 6 code editing, and live cloud container execution inside **E2B MicroVM sandboxes**.
 
 ---
 
 ## 🌟 What's New in Recent Updates
 
-- ⚡ **Zero-Blocking Header & Client Credit Streaming:** Extracted `UserCreditBadge` into an asynchronous client component with skeleton fallback, eliminating blocking database checks from the main layout header for instant navigation.
+- 🚀 **Full-Stack MicroVM Architecture with SQLite Database:** Enabled full-stack website generation running both frontend (React 19 on port 3000) and backend (Express on port 3001) in isolated E2B microVMs. Pre-configured Vite reverse proxy (`/api/*` ──► `http://127.0.0.1:3001`) and integrated file-backed SQLite (`node:sqlite` via `DatabaseSync`) for persistent data storage inside `./database.sqlite`.
+- 📱 **Mobile Resilience, Heartbeat Pings & Proxy Buffering Fix:** Added `"X-Accel-Buffering": "no"` to disable reverse proxy buffering on Render, coupled with 2.5-second SSE keepalive heartbeats (`: keepalive\n\n`) preventing mobile cellular carrier drops.
+- 💾 **Unconditional Server-Side Database Persistence:** Decoupled database commits from client socket lifecycles, ensuring completed AI-generated applications are always saved to PostgreSQL even if a mobile device dims or encounters network jitter. Fixed Prisma compound unique indexing (`id_userId`).
+- 📲 **Mobile View Auto-Transition:** Automatically shifts mobile view from chat to preview upon `done`, giving mobile users immediate visual confirmation of their generated full-stack web application.
+- ☁️ **E2B Cloud MicroVM Sandbox Architecture:** Replaced client-only sandboxing with isolated Firecracker microVMs powered by E2B (`@e2b/code-interpreter`), running real Node.js and full-stack Vite 6 servers with live shareable external URLs (`https://3000-*.e2b.app`).
+- 🖤 **High-Performance Pure Black CodeMirror 6 Editor:** Replaced the plain textarea with `@uiw/react-codemirror`, featuring a custom pure black theme (`#000000`), vivid neon syntax highlighting, bracket matching, auto-closing quotes/brackets, code folding, built-in search/replace (`Ctrl+F`), cursor Ln/Col stats, and auto-save sandbox sync badges.
+- ⚡ **Debounced MicroVM Sync & Vite HMR Dual-Mirroring:** 300ms debounced file synchronization with `queueMicrotask` decoupling to avoid network saturation, immediate flush on tab switch to Preview, and automatic dual-mirroring of `App.jsx` across root and `src/` so Vite HMR updates in real time. Backend edits automatically hot-reload Express without microVM reboots.
+- 🌐 **Unified Browser Omnibar Header:** Consolidated redundant controls into a single browser header toolbar with centered address pill, clipboard URL copy, instant iframe cache-busting reload (`?_t=Date.now()`), responsive viewport toggles (Desktop/Tablet/Mobile), popout window, and ZIP export via JSZip.
+- 🎨 **Responsive Hexagon Background & Multi-Device Glow:** Enhanced `HexagonBackground` with dynamic responsive sizing (`42px` mobile, `52px` tablet, `60px` desktop) using `useSyncExternalStore`, mobile touch-drag coordinate tracking, scale popping (`scale-105`), and viewport clipping (`overflow-x-clip`) preventing horizontal shift.
+- 🧪 **Enterprise Vitest Test Suite:** Added 54 comprehensive unit and integration tests across 12 test suites verifying sandbox lifecycle, language resolvers, HMR dual-mirroring, full-stack proxying, and AI parser resilience.
 - 🛡️ **Guarded Atomic Credit Ledger & Stream Abort Protection:** Switched credit deductions to conditional Prisma transactions (`credits >= CREDIT_COST`) to prevent race-condition negative balances. Added client abort detection (`isClosed`) so interrupted or cancelled generations never deduct credits or commit partial files.
 - 🔄 **Self-Healing User Provisioning:** Integrated automated `checkUser()` sync fallbacks across all project and workspace server actions, guaranteeing seamless auto-provisioning and concurrent sign-up handling without unexpected redirects.
-- 🎨 **SSR-Safe Background Animations:** Migrated `HexagonBackground` to React 19's `useSyncExternalStore`, eliminating window resize hydration mismatches and layout flicker.
 - 🔌 **Global Prisma Pool Hardening:** Cached Prisma Client instance on `globalThis` across all environments (including production Node runtime on Render) to prevent connection pool exhaustion during chunk evaluation.
-- 🚨 **Production Build Stability:** Streamlined error boundaries with segment-level resilience (`workspace/error.tsx`) and Next.js 16 built-in global fallbacks, eliminating prerender worker crashes.
 
 ---
 
@@ -28,14 +38,15 @@ A full-stack, enterprise-grade AI Web Application & Component Builder powered by
 
 ### 🧠 Real-Time AI Code Generation & Streaming
 - **SSE Stream Processing:** Streams response "thought chunks" (e.g. *Analyzing prompt...*, *Structuring Tailwind layout...*, *Adding interactive state...*) via Server-Sent Events before delivering code.
-- **Iterative Refinement:** Refine generated UI through follow-up prompt prompts. Modify styling, add animations, or create sub-components dynamically.
-- **NPM Registry Hallucination Shield:** Validates imported packages against the official NPM registry to prevent broken dependency imports in Sandpack.
+- **Iterative Refinement:** Refine generated UI through follow-up prompts. Modify styling, add animations, or create sub-components dynamically via `@cline/sdk`.
+- **NPM Registry Hallucination Shield:** Validates imported packages against the official NPM registry to prevent broken dependency imports in the sandbox.
 - **Resilient Error Categorization:** Granular diagnostics for Gemini free-tier quota limits (429), high-demand server capacity (503), and connection drops.
 
-### 💻 In-Browser Interactive Execution Sandbox
-- **Powered by Sandpack:** Runs generated React 19 and Tailwind CSS code directly inside an isolated browser sandbox (`@codesandbox/sandpack-react`).
-- **Zero Local Setup:** Instant visual feedback without compiling or installing dependencies locally.
-- **Code Change Synchronization:** Synchronizes manual code edits from Sandpack back to persistent workspace storage seamlessly.
+### 💻 Cloud MicroVM Sandbox & CodeMirror 6 Editor
+- **E2B MicroVM Execution:** Executes generated React 19, Tailwind CSS, and Vite 6 applications inside isolated Firecracker Linux microVMs running on port 3000.
+- **Zero Local Setup:** Instant visual feedback with live HTTPS public URLs and WebSocket HMR.
+- **CodeMirror 6 IDE:** Full-featured pure black IDE with line numbers, active line highlighting, bracket matching, code folding, search & replace, and breadcrumbs.
+- **Bi-Directional Code Synchronization:** Automatic 300ms debounced sync from the editor to the active cloud sandbox, with 3000ms debounced persistence to PostgreSQL.
 
 ### 🔐 Authentication & Atomic Credit Economy
 - **Clerk Authentication:** Frictionless user sign-up, sign-in, and session management (`@clerk/nextjs`) with resilient fallback handlers for concurrent user creation.
@@ -59,8 +70,8 @@ graph TD
     NextApp -->|Validate NPM Packages| NPMRegistry[NPM Registry API]
     NextApp -->|Atomic Transaction| Prisma[Prisma 7 ORM]
     Prisma -->|PostgreSQL| Supabase[(Supabase DB)]
-    NextApp -->|Virtual File Tree| Sandpack[Sandpack Sandbox]
-    Sandpack -->|Live Preview Render| User
+    NextApp -->|Launch / Sync Files| E2B[E2B Cloud MicroVM]
+    E2B -->|Port 3000 HTTPS Proxy| User
 ```
 
 ---
@@ -73,7 +84,9 @@ graph TD
 | **Frontend Library** | React / React DOM | `19.2.4` | React Concurrent Features, Modern Hooks & `useSyncExternalStore` |
 | **Runtime Engine** | Node.js | `>=22.12.0 <24.0.0` | Node 22 LTS compatibility for Prisma 7 |
 | **AI Model & SDK** | Google GenAI (`@google/genai`) | `2.12.0` | Streaming code generation via Gemini 3.5 Flash |
-| **Sandbox Execution** | Sandpack React & Themes | `2.20.0` / `2.0.21` | In-browser client execution engine |
+| **Cloud Sandbox** | E2B (`e2b`) | `^2.62.0` | Firecracker microVM cloud execution engine |
+| **Code Editor** | CodeMirror 6 (`@uiw/react-codemirror`) | `^4.25.12` | Pure black IDE editor with multi-language syntax highlighting |
+| **Testing Suite** | Vitest (`vitest`) | `^5.0.5` | Unit and integration test runner (53 tests passing) |
 | **Database & ORM** | Prisma / Supabase | `7.8.0` / `2.110.6` | PostgreSQL relational database & client adapter |
 | **Authentication** | Clerk | `7.5.18` | User identity & route middleware security |
 | **Security Shield** | Arcjet | `1.8.0` | Bot detection, rate-limiting, prompt injection shield |
@@ -103,6 +116,7 @@ ai_website_builder_nextjs_16/
 │   ├── api/                         # SSE & Utility API Route Handlers
 │   │   ├── gen-ai-code/             # SSE endpoint for initial workspace generation
 │   │   ├── improve/                 # SSE endpoint for iterative code edits
+│   │   ├── sandbox/                 # E2B Cloud MicroVM lifecycle management
 │   │   └── health/                  # Healthcheck endpoint for Render / Uptime monitoring
 │   ├── globals.css                  # Global styles & custom animations
 │   ├── layout.tsx                   # Root layout, theme providers, & Clerk provider
@@ -110,12 +124,15 @@ ai_website_builder_nextjs_16/
 │   └── page.tsx                     # Landing page with demo preview & marquee suggestions
 ├── components/                      # Reusable UI Components
 │   ├── ChatPanel.tsx                # AI Chat interface, message list, & thought chunks
-│   ├── CodePanel.tsx                # Sandpack editor & live browser preview toggle
+│   ├── CodePanel.tsx                # Browser omnibar toolbar & preview frame container
 │   ├── Header.tsx                   # Main navigation header (non-blocking)
 │   ├── MobileHeaderMenu.tsx         # Mobile drawer menu navigation with lazy credit sync
 │   ├── ProjectCard.tsx              # Project preview card with action triggers
 │   ├── UserCreditBadge.tsx          # Asynchronous client credit badge with pricing modal
 │   ├── WorkspaceClient.tsx          # Client state wrapper for Chat & Code panels
+│   ├── editor/                      # CodeMirror 6 Editor Components
+│   │   ├── CodeMirrorEditor.tsx     # Pure black IDE editor with live stats & copy triggers
+│   │   └── editor-theme.ts          # Custom high-contrast syntax highlighting & language resolvers
 │   ├── theme-provider.tsx           # Dark/light theme provider wrapper
 │   └── ui/                          # Primitive UI components (Shadcn / Base UI)
 ├── lib/                             # Core Utilities & Configuration
@@ -123,11 +140,19 @@ ai_website_builder_nextjs_16/
 │   ├── checkUser.ts                 # Resilient Clerk-to-Prisma user sync & auto-provisioning
 │   ├── constants.ts                 # Application constants (e.g. credit cost rules)
 │   ├── data.ts                      # Landing page mock dataset & prompts
+│   ├── e2b.ts                       # E2B cloud sandbox microVM lifecycle & file synchronization
 │   └── prisma.ts                    # Prisma Client instance with universal globalThis caching
 ├── prisma/                          # Database Modeling & Migrations
 │   └── schema.prisma                # Relational User & Workspace schema
 ├── proxy.ts                         # Custom Middleware proxy (Clerk & Arcjet guard)
 ├── render.yaml                      # Render deployment configuration blueprint
+├── tests/                           # Vitest Automated Test Suite (53 Tests)
+│   ├── ai/                          # AI parsing and prompt routing tests
+│   ├── api/                         # API route health and sandbox tests
+│   ├── database/                    # Workspace schema and project action tests
+│   ├── e2b/                         # E2B cloud microVM lifecycle & scaffolding tests
+│   ├── editor/                      # CodeMirror language resolvers & HMR dual-mirror tests
+│   └── file-tree/                   # Virtual file tree hierarchy and icon tests
 ├── .node-version                    # Node engine specification (22.14.0)
 └── package.json                     # Node dependencies & build scripts
 ```

@@ -68,7 +68,10 @@ export async function POST(request: NextRequest) {
                 } catch { }
             };
 
-            // Accumulate file patches as the agent calls update_file
+            const pingInterval = setInterval(() => {
+                if (isClosed) return;
+                enqueue(": keepalive\n\n");
+            }, 2500);
             const patchedFiles: Record<string, { code: string }> = {
                 ...fileData.files,
             };
@@ -216,7 +219,7 @@ RULES:
 
                 await db.$transaction([
                     db.workspace.update({
-                        where: { id: workspaceId, userId },
+                        where: { id_userId: { id: workspaceId, userId } },
                         data: { fileData: newFileData as never },
                     }),
                     db.user.updateMany({
@@ -273,6 +276,7 @@ RULES:
                     })
                 );
             } finally {
+                clearInterval(pingInterval);
                 closeStream();
             }
         },
@@ -280,9 +284,11 @@ RULES:
 
     return new Response(stream, {
         headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            Connection: "keep-alive",
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Content-Type-Options": "nosniff",
         },
     });
 }

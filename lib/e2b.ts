@@ -80,6 +80,12 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3001',
+        changeOrigin: true,
+      },
+    },
     watch: {
       usePolling: true,
       interval: 100,
@@ -171,6 +177,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
         // Ensure package.json exists and is normalized
         const rawPkgCode = normalizedFiles["package.json"];
+        const hasServerJs = Boolean(normalizedFiles["server.js"]);
+        const backendDeps: Record<string, string> = hasServerJs
+            ? { express: "^4.21.2", cors: "^2.8.5" }
+            : {};
+        const devScript = hasServerJs
+            ? "node server.js & vite --host 0.0.0.0 --port 3000"
+            : "vite --host 0.0.0.0 --port 3000";
+
         let packageJson: {
             name?: string;
             version?: string;
@@ -195,7 +209,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                 version: "1.0.0",
                 type: "module",
                 scripts: {
-                    dev: "vite --host 0.0.0.0 --port 3000",
+                    dev: devScript,
                     build: "vite build",
                     start: "node server.js",
                 },
@@ -205,6 +219,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                     "lucide-react": "^1.16.0",
                     clsx: "^2.1.1",
                     "tailwind-merge": "^3.0.0",
+                    ...backendDeps,
                     ...userDeps,
                 },
                 devDependencies: {
@@ -215,13 +230,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         } else {
             packageJson.type = "module";
             packageJson.scripts = packageJson.scripts || {};
-            packageJson.scripts.dev = "vite --host 0.0.0.0 --port 3000";
+            packageJson.scripts.dev = devScript;
             packageJson.dependencies = {
                 react: "^19.0.0",
                 "react-dom": "^19.0.0",
                 "lucide-react": "^1.16.0",
                 clsx: "^2.1.1",
                 "tailwind-merge": "^3.0.0",
+                ...backendDeps,
                 ...(packageJson.dependencies || {}),
                 ...userDeps,
             };
@@ -292,6 +308,10 @@ export async function startSandboxApp(
         // Install dependencies with legacy peer deps and safe fallback
         await sandbox.commands.run(
             `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || npm install --silent --no-audit --no-fund --force || true)`
+        );
+        // Start Node/Express backend if server.js exists
+        await sandbox.commands.run(
+            `cd ${baseDir} && if [ -f server.js ]; then node server.js > /tmp/backend.log 2>&1 & fi`
         );
         // Start Vite dev server in background with log redirection for diagnosis
         await sandbox.commands.run(`cd ${baseDir} && npm run dev > /tmp/dev-server.log 2>&1`, { background: true });
