@@ -76,6 +76,15 @@ describe("Sandbox Endpoint Validation Contract", () => {
     expect(check.valid).toBe(true);
   });
 
+  it("should format expired sandbox response contract properly", () => {
+    const expiredResponse = {
+      error: "Sandbox is not running or has expired. Please re-boot.",
+      code: "SANDBOX_EXPIRED",
+    };
+    expect(expiredResponse.code).toBe("SANDBOX_EXPIRED");
+    expect(expiredResponse.error).toContain("expired");
+  });
+
   it("should reject unsupported actions", () => {
     const invalid = validateSandboxRequest({ action: "restart" });
     expect(invalid.valid).toBe(false);

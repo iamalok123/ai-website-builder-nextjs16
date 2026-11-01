@@ -74,7 +74,20 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ success: true, message: "Nothing to sync" });
             }
 
-            const sandbox = await connectE2bSandbox(sandboxId);
+            let sandbox;
+            try {
+                sandbox = await connectE2bSandbox(sandboxId);
+            } catch (connErr: unknown) {
+                console.warn(`[E2B Sandbox Sync] Sandbox ${sandboxId} could not be connected:`, connErr);
+                return NextResponse.json(
+                    {
+                        error: "Sandbox is not running or has expired. Please re-boot.",
+                        code: "SANDBOX_EXPIRED",
+                    },
+                    { status: 404 }
+                );
+            }
+
             const baseDir = "/home/user/app";
 
             const promises: Promise<unknown>[] = [];

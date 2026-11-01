@@ -25,6 +25,10 @@ export async function createE2bSandbox(timeoutMs = E2B_SANDBOX_TIMEOUT_MS): Prom
     return await Sandbox.create({
         apiKey,
         timeoutMs,
+        envs: {
+            PORT: "3000",
+            HOST: "0.0.0.0",
+        },
         network: {
             allowPublicTraffic: true,
             maskRequestHost: "localhost:${PORT}",
@@ -223,7 +227,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     // Ensure working directory exists and any standard directories
     await sandbox.commands.run(`mkdir -p ${baseDir}/src ${baseDir}/components ${baseDir}/public`);
 
-    // Create subdirectories for nested files
+    // Create subdirectories for nested files in a single batched command
     const dirs = new Set<string>();
     for (const cleanPath of Object.keys(normalizedFiles)) {
         const lastSlash = cleanPath.lastIndexOf("/");
@@ -231,8 +235,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             dirs.add(`${baseDir}/${cleanPath.slice(0, lastSlash)}`);
         }
     }
-    for (const dir of dirs) {
-        await sandbox.commands.run(`mkdir -p "${dir}"`);
+    if (dirs.size > 0) {
+        const dirList = Array.from(dirs).map((d) => `"${d}"`).join(" ");
+        await sandbox.commands.run(`mkdir -p ${dirList}`);
     }
 
     // Write all normalized files exactly once (zero race conditions)

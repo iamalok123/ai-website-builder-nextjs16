@@ -339,7 +339,7 @@ export default defineConfig({
 
     const syncSandboxFiles = useCallback(async (id: string, changedFiles: Record<string, { code: string }>) => {
         try {
-            await fetch("/api/sandbox", {
+            const res = await fetch("/api/sandbox", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -348,6 +348,13 @@ export default defineConfig({
                     changedFiles,
                 }),
             });
+            const data = await res.json();
+            if (!res.ok) {
+                if (res.status === 404 || data.code === "SANDBOX_EXPIRED") {
+                    console.warn("[CodePanel] Sandbox expired or unreachable, resetting for automatic re-boot...");
+                    setSandboxId(null);
+                }
+            }
         } catch (err) {
             console.warn("[CodePanel] Failed to sync files to sandbox:", err);
         }
@@ -591,7 +598,7 @@ export default defineConfig({
                     keepMounted
                     className={cn(
                         "relative flex-1 min-h-0 min-w-0 m-0 p-0 flex flex-col items-center justify-center bg-black overflow-hidden",
-                        activeTab !== "preview" && "!hidden"
+                        activeTab !== "preview" && "hidden!"
                     )}
                 >
                     {/* State 1: Generation in progress */}
@@ -728,7 +735,7 @@ export default defineConfig({
                     keepMounted
                     className={cn(
                         "flex-1 min-h-0 min-w-0 m-0 p-0 flex flex-row overflow-hidden bg-[#09090e]",
-                        activeTab !== "code" && "!hidden"
+                        activeTab !== "code" && "hidden!"
                     )}
                 >
                     {/* Left: Hierarchical File Explorer */}
