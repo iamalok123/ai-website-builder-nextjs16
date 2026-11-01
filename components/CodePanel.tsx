@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { FileData, StatusStep } from "@/types/workspace";
+import { CodeMirrorEditor } from "@/components/editor/CodeMirrorEditor";
 
 // Types
 type ActiveTab = "preview" | "code";
@@ -243,6 +244,7 @@ export function CodePanel({
     const [improveInput, setImproveInput] = useState("");
     const [showImproveInput, setShowImproveInput] = useState(false);
     const [isIframeLoading, setIsIframeLoading] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const files = useMemo(() => fileData?.files ?? {}, [fileData?.files]);
@@ -452,14 +454,21 @@ export default defineConfig({
         // Update local tracking ref so generation effect doesn't duplicate the sync
         prevFilesRef.current = updatedFiles;
 
+        setIsSyncing(true);
         if (debounceTimerRef.current) {
             clearTimeout(debounceTimerRef.current);
         }
 
         if (sandboxId) {
-            debounceTimerRef.current = setTimeout(() => {
-                syncSandboxFiles(sandboxId, { [targetKey]: { code: newCode } });
+            debounceTimerRef.current = setTimeout(async () => {
+                try {
+                    await syncSandboxFiles(sandboxId, { [targetKey]: { code: newCode } });
+                } finally {
+                    setIsSyncing(false);
+                }
             }, 300);
+        } else {
+            setIsSyncing(false);
         }
     };
 
@@ -470,6 +479,7 @@ export default defineConfig({
                 clearTimeout(debounceTimerRef.current);
                 debounceTimerRef.current = null;
             }
+            setIsSyncing(false);
             if (sandboxId && selectedFile) {
                 let targetKey = selectedFile;
                 if (!files[targetKey]) {
@@ -851,22 +861,15 @@ export default defineConfig({
                         </div>
                     </div>
 
-                    {/* Right: Code Editor */}
-                    <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#07070b]">
-                        <div className="flex h-9 shrink-0 items-center justify-between border-b border-white/5 bg-[#0e0e14] px-4 text-xs font-mono text-zinc-400">
-                            <span className="text-zinc-300 font-medium">{selectedFile}</span>
-                            <span className="text-[10px] text-zinc-500">Auto-saves to cloud sandbox</span>
-                        </div>
-                        <div className="flex-1 relative overflow-auto p-4">
-                            <textarea
-                                value={selectedCode}
-                                onChange={(e) => handleCodeChange(e.target.value)}
-                                spellCheck={false}
-                                className="w-full h-full resize-none bg-transparent font-mono text-xs sm:text-[13px] leading-relaxed text-zinc-200 outline-none selection:bg-orange-500/30 selection:text-orange-200"
-                                placeholder="// Select a file from the explorer on the left..."
-                            />
-                        </div>
-                    </div>
+                    {/* Right: Code Editor powered by CodeMirror 6 */}
+                    <CodeMirrorEditor
+                        value={selectedCode}
+                        filePath={selectedFile}
+                        onChange={handleCodeChange}
+                        readOnly={isGenerating}
+                        isSyncing={isSyncing}
+                        getFileIcon={getFileIcon}
+                    />
                 </TabsContent>
             </Tabs>
 
