@@ -18,13 +18,16 @@ export function getE2bApiKey(): string {
 }
 
 /**
- * Creates an isolated E2B cloud sandbox instance
+ * Creates an isolated E2B cloud sandbox instance with public web traffic enabled
  */
 export async function createE2bSandbox(timeoutMs = E2B_SANDBOX_TIMEOUT_MS): Promise<Sandbox> {
     const apiKey = getE2bApiKey();
     return await Sandbox.create({
         apiKey,
         timeoutMs,
+        network: {
+            allowPublicTraffic: true,
+        },
         metadata: {
             app: "zephyre",
             timestamp: new Date().toISOString(),
@@ -72,7 +75,7 @@ export async function writeFilesToSandbox(
     const files = fileData.files ?? {};
     const stack = detectStack(files);
 
-    // Ensure working directory exists and any subdirectories
+    // Ensure working directory exists and any standard directories
     await sandbox.commands.run(`mkdir -p ${baseDir}/src ${baseDir}/components ${baseDir}/public`);
 
     // Create subdirectories for nested files
@@ -84,8 +87,8 @@ export async function writeFilesToSandbox(
             dirs.add(`${baseDir}/${cleanPath.slice(0, lastSlash)}`);
         }
     }
-    if (dirs.size > 0) {
-        await sandbox.commands.run(`mkdir -p ${Array.from(dirs).join(" ")}`);
+    for (const dir of dirs) {
+        await sandbox.commands.run(`mkdir -p "${dir}"`);
     }
 
     const writePromises: Promise<unknown>[] = [];
@@ -94,7 +97,7 @@ export async function writeFilesToSandbox(
     for (const [rawPath, fileObj] of Object.entries(files)) {
         const cleanPath = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
         const targetPath = `${baseDir}/${cleanPath}`;
-        writePromises.push(sandbox.files.write(targetPath, fileObj.code));
+        writePromises.push(sandbox.files.write(targetPath, fileObj?.code ?? ""));
     }
 
     if (stack === "react-node") {
@@ -194,6 +197,18 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     }
 
     await Promise.all(writePromises);
+
+    // Cross-mirror components between root /components and /src/components so all relative imports resolve
+    if (stack === "react-node") {
+        await sandbox.commands.run(`mkdir -p ${baseDir}/components ${baseDir}/src/components`);
+        await sandbox.commands.run(
+            `if [ -d ${baseDir}/components ]; then cp -rn ${baseDir}/components/* ${baseDir}/src/components/ 2>/dev/null || true; fi`
+        );
+        await sandbox.commands.run(
+            `if [ -d ${baseDir}/src/components ]; then cp -rn ${baseDir}/src/components/* ${baseDir}/components/ 2>/dev/null || true; fi`
+        );
+    }
+
     return { stack };
 }
 
@@ -215,10 +230,11 @@ export async function startSandboxApp(
             { background: true }
         );
     } else {
-        // Install dependencies & start Vite dev server with legacy peer deps fallback
+        // Install dependencies with legacy peer deps and safe fallback
         await sandbox.commands.run(
-            `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || npm install --silent --no-audit --no-fund --force)`
+            `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || npm install --silent --no-audit --no-fund --force || true)`
         );
+        // Start Vite dev server in background
         await sandbox.commands.run(`cd ${baseDir} && npm run dev`, { background: true });
     }
 
