@@ -31,3 +31,6 @@ export async function GET() {
     }
   );
 }
+
+// Allow HEAD and POST pings from uptime checkers and cron services
+export { GET as HEAD, GET as POST };
