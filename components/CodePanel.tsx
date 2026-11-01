@@ -630,27 +630,54 @@ export default defineConfig({
                     {/* Right side action buttons */}
                     <div className="flex items-center gap-1.5">
                         {previewUrl && (
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleCopyUrl}
-                                className="h-8 gap-1.5 px-2.5 text-xs font-semibold bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 hover:text-emerald-300"
-                            >
-                                {copied ? <Check className="h-3.5 w-3.5 text-emerald-300" /> : <Copy className="h-3.5 w-3.5" />}
-                                <span className="hidden sm:inline">Share URL</span>
-                            </Button>
-                        )}
+                            <>
+                                {/* Reload preview frame */}
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleRefreshIframe}
+                                    title="Reload preview frame"
+                                    className="h-8 w-8 p-0 text-zinc-400 hover:text-white hover:bg-white/5 cursor-pointer"
+                                >
+                                    <RefreshCw className="h-3.5 w-3.5" />
+                                    <span className="sr-only">Reload</span>
+                                </Button>
 
-                        {previewUrl && (
-                            <a
-                                href={previewUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title="Open in new tab"
-                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/5 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white"
-                            >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
+                                {/* Restart container */}
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => fileData && startSandbox(fileData, sandboxId)}
+                                    title="Restart cloud sandbox container"
+                                    className="h-8 gap-1.5 px-2.5 text-xs text-zinc-400 hover:text-orange-300 hover:bg-orange-500/10 cursor-pointer"
+                                >
+                                    <RefreshCw className="h-3.5 w-3.5" />
+                                    <span className="hidden sm:inline">Restart</span>
+                                </Button>
+
+                                {/* Open in new tab */}
+                                <a
+                                    href={previewUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="Open in new tab"
+                                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/5 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white cursor-pointer"
+                                >
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                    <span className="sr-only">Open in new tab</span>
+                                </a>
+
+                                {/* Share / Copy URL */}
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleCopyUrl}
+                                    className="h-8 gap-1.5 px-2.5 text-xs font-semibold bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 hover:text-emerald-300 cursor-pointer"
+                                >
+                                    {copied ? <Check className="h-3.5 w-3.5 text-emerald-300" /> : <Copy className="h-3.5 w-3.5" />}
+                                    <span className="hidden sm:inline">Share URL</span>
+                                </Button>
+                            </>
                         )}
 
                         {/* Export to ZIP */}
@@ -659,7 +686,7 @@ export default defineConfig({
                             size="sm"
                             onClick={handleExportZip}
                             disabled={isExporting || fileList.length === 0}
-                            className="h-8 gap-1.5 px-2.5 text-xs text-zinc-400 hover:text-white hover:bg-white/5"
+                            className="h-8 gap-1.5 px-2.5 text-xs text-zinc-400 hover:text-white hover:bg-white/5 cursor-pointer"
                         >
                             {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                             <span className="hidden sm:inline">Export ZIP</span>
@@ -753,43 +780,10 @@ export default defineConfig({
                             }`}
                         >
                             {/* URL Subheader Bar */}
-                            <div className="flex h-8 shrink-0 items-center justify-between border-b border-white/5 bg-[#0e0e14] px-3 text-[11px] text-zinc-400 font-mono">
+                            <div className="flex h-8 shrink-0 items-center border-b border-white/5 bg-[#0e0e14] px-3 text-[11px] text-zinc-400 font-mono">
                                 <div className="flex items-center gap-2 min-w-0">
-                                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                                     <span className="truncate">{previewUrl}</span>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                    <button
-                                        onClick={handleCopyUrl}
-                                        title="Copy URL"
-                                        className="p-1 hover:text-white transition-colors cursor-pointer"
-                                    >
-                                        <Copy className="h-3 w-3" />
-                                    </button>
-                                    <a
-                                        href={previewUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        title="Open in new tab"
-                                        className="p-1 hover:text-white transition-colors cursor-pointer"
-                                    >
-                                        <ExternalLink className="h-3 w-3" />
-                                    </a>
-                                    <button
-                                        onClick={handleRefreshIframe}
-                                        title="Reload preview iframe"
-                                        className="p-1 hover:text-white transition-colors cursor-pointer"
-                                    >
-                                        <RefreshCw className="h-3 w-3" />
-                                    </button>
-                                    <button
-                                        onClick={() => fileData && startSandbox(fileData, sandboxId)}
-                                        title="Restart cloud sandbox container"
-                                        className="px-2 py-0.5 rounded text-[10px] bg-white/5 hover:bg-orange-500/20 text-zinc-300 hover:text-orange-300 transition-colors cursor-pointer border border-white/5 flex items-center gap-1"
-                                    >
-                                        <RefreshCw className="h-2.5 w-2.5" />
-                                        <span>Restart</span>
-                                    </button>
                                 </div>
                             </div>
 
