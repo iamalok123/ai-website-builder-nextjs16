@@ -30,6 +30,7 @@ import JSZip from "jszip";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import type { FileData, StatusStep } from "@/types/workspace";
 
 // Types
@@ -584,10 +585,14 @@ export default defineConfig({
                     </div>
                 </div>
 
-                {/* ── Content: Preview Tab ── */}
+                {/* ── Content: Preview Tab (keepMounted prevents iframe unmount/reload) ── */}
                 <TabsContent
                     value="preview"
-                    className="relative flex-1 min-h-0 min-w-0 m-0 p-0 flex flex-col items-center justify-center bg-black overflow-hidden"
+                    keepMounted
+                    className={cn(
+                        "relative flex-1 min-h-0 min-w-0 m-0 p-0 flex flex-col items-center justify-center bg-black overflow-hidden",
+                        activeTab !== "preview" && "!hidden"
+                    )}
                 >
                     {/* State 1: Generation in progress */}
                     {isGenerating && (
@@ -717,10 +722,14 @@ export default defineConfig({
                     )}
                 </TabsContent>
 
-                {/* ── Content: Code Tab (Hierarchical File Tree + Editor) ── */}
+                {/* ── Content: Code Tab (keepMounted preserves editor state & scroll) ── */}
                 <TabsContent
                     value="code"
-                    className="flex-1 min-h-0 min-w-0 m-0 p-0 flex flex-row overflow-hidden bg-[#09090e]"
+                    keepMounted
+                    className={cn(
+                        "flex-1 min-h-0 min-w-0 m-0 p-0 flex flex-row overflow-hidden bg-[#09090e]",
+                        activeTab !== "code" && "!hidden"
+                    )}
                 >
                     {/* Left: Hierarchical File Explorer */}
                     <div className="w-64 shrink-0 border-r border-white/5 bg-[#0e0e14] flex flex-col overflow-hidden">

@@ -12,7 +12,7 @@ export const BlueTitle = ({
     className?: string;
 }) => (
     <span
-        className={`bg-linear-to-br font-serif from-blue-300 via-blue-400 to-blue-600 bg-clip-text text-transparent ${className}`}
+        className={`bg-linear-to-br font-bold tracking-tight from-blue-300 via-blue-400 to-blue-600 bg-clip-text text-transparent ${className}`}
     >
         {children}
     </span>
@@ -39,7 +39,7 @@ export const SectionHeading = ({
     gray: string;
     blue: string;
 }) => (
-    <h2 className="font-serif text-[clamp(2rem,4vw,3rem)] leading-[1.1] tracking-tight">
+    <h2 className="font-extrabold text-[clamp(2rem,4vw,3rem)] leading-[1.1] tracking-tight">
         <GrayTitle>{gray}</GrayTitle>
         <br />
         <BlueTitle>{blue}</BlueTitle>

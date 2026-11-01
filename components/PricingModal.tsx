@@ -74,7 +74,7 @@ export function PricingModal({
             <DialogTrigger className={"cursor-pointer"}>{children}</DialogTrigger>
             <DialogContent className="border-white/8 bg-[#0f0f0f] p-0 text-white sm:max-w-5xl max-h-[90dvh] overflow-y-auto">
                 <DialogHeader className="px-6 pt-6 pb-2">
-                    <DialogTitle className="font-serif text-xl tracking-tight text-white/90">
+                    <DialogTitle className="font-semibold text-xl tracking-tight text-white/90">
                         <BlueTitle className="text-4xl">{title}</BlueTitle>
                     </DialogTitle>
                     <DialogDescription className="text-sm text-white/35">
@@ -129,7 +129,7 @@ export function PricingModal({
 
                                 {/* Price */}
                                 <div className="mb-1 flex items-baseline gap-1">
-                                    <span className="font-serif text-4xl">
+                                    <span className="font-bold text-4xl tracking-tight">
                                         {plan.price === 0 ? (
                                             <GrayTitle>$0</GrayTitle>
                                         ) : (
