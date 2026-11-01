@@ -568,8 +568,9 @@ export default defineConfig({
                 className="flex h-full w-full flex-col overflow-hidden"
             >
                 {/* ── Header Toolbar ── */}
-                <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/5 bg-[#12121a] px-3 sm:px-4">
-                    <div className="flex items-center gap-2">
+                <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/5 bg-[#12121a] px-3 sm:px-4 gap-2">
+                    {/* Left: View Tabs & Mobile Menu */}
+                    <div className="flex items-center gap-2 shrink-0">
                         {/* Mobile view toggle */}
                         <Button
                             variant="ghost"
@@ -598,52 +599,84 @@ export default defineConfig({
                                 Code
                             </TabsTrigger>
                         </TabsList>
-
-                        {/* Responsive Viewport controls (Only in preview tab) */}
-                        {activeTab === "preview" && (
-                            <div className="hidden sm:flex items-center gap-1 ml-2 border-l border-white/10 pl-2">
-                                <button
-                                    onClick={() => setViewport("desktop")}
-                                    title="Desktop view"
-                                    className={`p-1.5 rounded-md transition-colors ${viewport === "desktop" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"}`}
-                                >
-                                    <Monitor className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                    onClick={() => setViewport("tablet")}
-                                    title="Tablet view (768px)"
-                                    className={`p-1.5 rounded-md transition-colors ${viewport === "tablet" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"}`}
-                                >
-                                    <Tablet className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                    onClick={() => setViewport("mobile")}
-                                    title="Mobile view (375px)"
-                                    className={`p-1.5 rounded-md transition-colors ${viewport === "mobile" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"}`}
-                                >
-                                    <Smartphone className="h-3.5 w-3.5" />
-                                </button>
-                            </div>
-                        )}
                     </div>
 
-                    {/* Right side action buttons */}
-                    <div className="flex items-center gap-1.5">
+                    {/* Middle: Browser Address Bar & Preview Navigation */}
+                    <div className="flex flex-1 items-center justify-center min-w-0 px-2">
+                        {activeTab === "preview" && previewUrl ? (
+                            <div className="flex items-center gap-1.5 w-full max-w-lg justify-center min-w-0">
+                                {/* Responsive Viewport Controls */}
+                                <div className="hidden md:flex items-center gap-0.5 p-0.5 bg-black/40 border border-white/5 rounded-lg shrink-0">
+                                    <button
+                                        onClick={() => setViewport("desktop")}
+                                        title="Desktop view"
+                                        className={`p-1.5 rounded-md transition-colors ${viewport === "desktop" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"}`}
+                                    >
+                                        <Monitor className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                        onClick={() => setViewport("tablet")}
+                                        title="Tablet view (768px)"
+                                        className={`p-1.5 rounded-md transition-colors ${viewport === "tablet" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"}`}
+                                    >
+                                        <Tablet className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                        onClick={() => setViewport("mobile")}
+                                        title="Mobile view (375px)"
+                                        className={`p-1.5 rounded-md transition-colors ${viewport === "mobile" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"}`}
+                                    >
+                                        <Smartphone className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+
+                                {/* Browser Reload Preview Button */}
+                                <button
+                                    onClick={handleRefreshIframe}
+                                    title="Reload preview"
+                                    className="p-1.5 rounded-lg border border-white/5 bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+                                >
+                                    <RefreshCw className={`h-3.5 w-3.5 ${isIframeLoading ? "animate-spin text-orange-400" : ""}`} />
+                                </button>
+
+                                {/* Central Omnibar Link Pill */}
+                                <div className="flex items-center gap-2 px-3 py-1 bg-black/60 border border-white/10 rounded-full text-xs font-mono text-zinc-300 min-w-0 flex-1 max-w-xs sm:max-w-sm justify-between shadow-inner">
+                                    <div className="flex items-center gap-2 min-w-0 truncate">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                                        <span className="truncate select-all text-[11px] text-zinc-300">{previewUrl}</span>
+                                    </div>
+                                    <button
+                                        onClick={handleCopyUrl}
+                                        title="Copy URL"
+                                        className="text-zinc-500 hover:text-zinc-200 transition-colors shrink-0 cursor-pointer p-0.5"
+                                    >
+                                        {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                                    </button>
+                                </div>
+
+                                {/* Open in New Tab Button */}
+                                <a
+                                    href={previewUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="Open in new tab"
+                                    className="p-1.5 rounded-lg border border-white/5 bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+                                >
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                </a>
+                            </div>
+                        ) : activeTab === "code" && selectedFile ? (
+                            <div className="flex items-center gap-2 px-3 py-1 bg-black/40 border border-white/5 rounded-full text-xs font-mono text-zinc-400">
+                                <span className="text-zinc-300">{selectedFile}</span>
+                            </div>
+                        ) : null}
+                    </div>
+
+                    {/* Right: Actions */}
+                    <div className="flex items-center gap-1.5 shrink-0">
                         {previewUrl && (
                             <>
-                                {/* Reload preview frame */}
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={handleRefreshIframe}
-                                    title="Reload preview frame"
-                                    className="h-8 w-8 p-0 text-zinc-400 hover:text-white hover:bg-white/5 cursor-pointer"
-                                >
-                                    <RefreshCw className="h-3.5 w-3.5" />
-                                    <span className="sr-only">Reload</span>
-                                </Button>
-
-                                {/* Restart container */}
+                                {/* Restart Container */}
                                 <Button
                                     variant="ghost"
                                     size="sm"
@@ -652,20 +685,8 @@ export default defineConfig({
                                     className="h-8 gap-1.5 px-2.5 text-xs text-zinc-400 hover:text-orange-300 hover:bg-orange-500/10 cursor-pointer"
                                 >
                                     <RefreshCw className="h-3.5 w-3.5" />
-                                    <span className="hidden sm:inline">Restart</span>
+                                    <span className="hidden lg:inline">Restart</span>
                                 </Button>
-
-                                {/* Open in new tab */}
-                                <a
-                                    href={previewUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    title="Open in new tab"
-                                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/5 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white cursor-pointer"
-                                >
-                                    <ExternalLink className="h-3.5 w-3.5" />
-                                    <span className="sr-only">Open in new tab</span>
-                                </a>
 
                                 {/* Share / Copy URL */}
                                 <Button
@@ -779,14 +800,6 @@ export default defineConfig({
                                 "max-w-93.75 border-x border-white/10 shadow-2xl"
                             }`}
                         >
-                            {/* URL Subheader Bar */}
-                            <div className="flex h-8 shrink-0 items-center border-b border-white/5 bg-[#0e0e14] px-3 text-[11px] text-zinc-400 font-mono">
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                                    <span className="truncate">{previewUrl}</span>
-                                </div>
-                            </div>
-
                             <div className="relative flex-1 w-full min-h-0 bg-[#0e0e14]">
                                 {isIframeLoading && (
                                     <div className="absolute top-0 left-0 right-0 h-0.5 bg-linear-to-r from-orange-500 via-amber-400 to-emerald-400 animate-pulse z-10" />
@@ -796,7 +809,7 @@ export default defineConfig({
                                     src={previewUrl}
                                     onLoad={() => setIsIframeLoading(false)}
                                     title={appTitle || "Zephyre Preview"}
-                                    className="h-full w-full border-0 bg-[#0e0e14]"
+                                    className="h-full w-full border-0 bg-white"
                                     allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write"
                                 />
                             </div>
