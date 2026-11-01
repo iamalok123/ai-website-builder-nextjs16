@@ -16,22 +16,51 @@ function parseLlmJson(raw: string): {
 
   const firstBrace = clean.indexOf("{");
   const lastBrace = clean.lastIndexOf("}");
-  if (firstBrace !== -1 && lastBrace !== -1) {
-    clean = clean.substring(firstBrace, lastBrace + 1);
+  let candidate = clean;
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
+    candidate = clean.substring(firstBrace, lastBrace + 1);
   }
 
+  // Attempt 1: Standard JSON.parse on candidate
   try {
-    return JSON.parse(clean);
-  } catch {
+    return JSON.parse(candidate);
+  } catch {}
+
+  // Attempt 2: jsonrepair on candidate
+  try {
+    const repaired = jsonrepair(candidate);
+    return JSON.parse(repaired);
+  } catch {}
+
+  // Attempt 3: Sanitize control characters + jsonrepair
+  const sanitized = candidate.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, "");
+  try {
+    const repaired = jsonrepair(sanitized);
+    return JSON.parse(repaired);
+  } catch {}
+
+  // Attempt 4: If truncated mid-string, try auto-closing open quotes and objects
+  const autoClosedAttempts = [
+    sanitized + '"}',
+    sanitized + '"} }',
+    sanitized + '"}} }',
+    sanitized + '}}',
+    sanitized + '}}}',
+  ];
+  for (const attempt of autoClosedAttempts) {
     try {
-      const repaired = jsonrepair(clean);
-      return JSON.parse(repaired);
-    } catch {
-      const sanitized = clean.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, "");
-      const repaired = jsonrepair(sanitized);
-      return JSON.parse(repaired);
-    }
+      const repaired = jsonrepair(attempt);
+      const parsed = JSON.parse(repaired);
+      if (parsed && typeof parsed === "object" && parsed.files) {
+        return parsed;
+      }
+    } catch {}
   }
+
+  // Final attempt: jsonrepair on full sanitized raw string
+  const rawSanitized = clean.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, "");
+  const finalRepaired = jsonrepair(rawSanitized);
+  return JSON.parse(finalRepaired);
 }
 
 describe("AI Code Generation & LLM JSON Parser", () => {
@@ -84,5 +113,12 @@ describe("AI Code Generation & LLM JSON Parser", () => {
     const parsed = parseLlmJson(raw);
     expect(parsed.title).toBe("Trailing Comma App");
     expect(parsed.dependencies?.["lucide-react"]).toBe("latest");
+  });
+
+  it("should repair JSON truncated inside code string", () => {
+    const raw = `{\n  "assistantMessage": "Streak tracker",\n  "title": "Streak App",\n  "files": {\n    "/App.jsx": { "code": "export default function App() { return <div>hello</div>;`;
+    const parsed = parseLlmJson(raw);
+    expect(parsed.title).toBe("Streak App");
+    expect(parsed.files["/App.jsx"].code).toContain("export default");
   });
 });
