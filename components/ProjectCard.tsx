@@ -97,14 +97,12 @@ export function ProjectCard({ projects }: ProjectCardProps) {
                                 }}
                                 className="relative z-20 shrink-0"
                             >
-                                <DeleteProjectModal project={project} onDeleted={handleDeleted}>
-                                    <button
-                                        type="button"
-                                        title="Delete project"
-                                        className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer inline-flex items-center"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </button>
+                                <DeleteProjectModal
+                                    project={project}
+                                    onDeleted={handleDeleted}
+                                    title="Delete project"
+                                >
+                                    <Trash2 className="h-4 w-4" />
                                 </DeleteProjectModal>
                             </div>
                         </div>

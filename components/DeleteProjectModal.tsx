@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
     Dialog,
     DialogContent,
@@ -19,12 +20,16 @@ import { deleteProject, ProjectSummary } from "@/actions/projects";
 interface DeleteProjectModalProps {
     project: ProjectSummary;
     children: React.ReactNode;
+    className?: string;
+    title?: string;
     onDeleted?: (id: string) => void;
 }
 
 export function DeleteProjectModal({
     project,
     children,
+    className,
+    title,
     onDeleted,
 }: DeleteProjectModalProps) {
     const router = useRouter();
@@ -56,6 +61,11 @@ export function DeleteProjectModal({
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger
+                title={title}
+                className={cn(
+                    "p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer inline-flex items-center justify-center",
+                    className
+                )}
                 onClick={(e: React.MouseEvent) => {
                     e.stopPropagation();
                 }}
