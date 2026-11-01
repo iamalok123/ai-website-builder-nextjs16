@@ -90,4 +90,39 @@ describe("E2B Scaffolding & Configuration Generator", () => {
     expect(pkg.dependencies["canvas-confetti"]).toBe("^1.9.0");
     expect(pkg.scripts.dev).toContain("vite --host 0.0.0.0 --port 3000");
   });
+
+  it("should normalize an existing AI-generated package.json to ensure dev host and critical dependencies", () => {
+    const rawAiPackage = JSON.stringify({
+      name: "custom-ai-app",
+      scripts: {
+        dev: "vite",
+      },
+      dependencies: {
+        "lodash-es": "^4.17.21",
+      },
+    });
+
+    const parsed = JSON.parse(rawAiPackage);
+    parsed.type = "module";
+    parsed.scripts = parsed.scripts || {};
+    parsed.scripts.dev = "vite --host 0.0.0.0 --port 3000";
+    parsed.dependencies = {
+      react: "^19.0.0",
+      "react-dom": "^19.0.0",
+      "lucide-react": "^1.16.0",
+      clsx: "^2.1.1",
+      "tailwind-merge": "^3.0.0",
+      ...parsed.dependencies,
+    };
+    parsed.devDependencies = {
+      "@vitejs/plugin-react": "^4.3.4",
+      vite: "^6.0.0",
+      ...(parsed.devDependencies || {}),
+    };
+
+    expect(parsed.scripts.dev).toBe("vite --host 0.0.0.0 --port 3000");
+    expect(parsed.dependencies["lodash-es"]).toBe("^4.17.21");
+    expect(parsed.dependencies.react).toBe("^19.0.0");
+    expect(parsed.devDependencies["@vitejs/plugin-react"]).toBe("^4.3.4");
+  });
 });

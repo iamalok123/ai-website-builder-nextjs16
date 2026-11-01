@@ -19,9 +19,10 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { action, sandboxId, fileData, changedFiles } = body as {
+        const { action, sandboxId, previousSandboxId, fileData, changedFiles } = body as {
             action: "start" | "sync" | "stop";
             sandboxId?: string;
+            previousSandboxId?: string;
             fileData?: FileData;
             changedFiles?: Record<string, { code: string }>;
         };
@@ -34,19 +35,31 @@ export async function POST(req: NextRequest) {
                 );
             }
 
-            // Create new microVM sandbox
+            // Clean up previous sandbox if provided to prevent lingering containers
+            const oldId = previousSandboxId || sandboxId;
+            if (oldId) {
+                try {
+                    await killE2bSandbox(oldId);
+                } catch {
+                    // Silently proceed if prior sandbox already expired or was deleted
+                }
+            }
+
+            // Create new microVM sandbox with explicit public network access
             const sandbox = await createE2bSandbox();
             
             // Write project files to the container filesystem
             const { stack } = await writeFilesToSandbox(sandbox, fileData);
 
             // Start dev server and get exposed public URL
-            const { previewUrl } = await startSandboxApp(sandbox, stack);
+            const { previewUrl, trafficAccessToken, isPublic } = await startSandboxApp(sandbox, stack);
 
             return NextResponse.json({
                 success: true,
                 sandboxId: sandbox.sandboxId,
                 previewUrl,
+                trafficAccessToken,
+                isPublic,
                 stack,
             });
         }

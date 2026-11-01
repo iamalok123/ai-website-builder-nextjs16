@@ -269,7 +269,7 @@ export function CodePanel({
 
     // ─── E2B Sandbox Lifecycle: Start or Sync ─────────────────────────────────────
 
-    const startSandbox = useCallback(async (data: FileData) => {
+    const startSandbox = useCallback(async (data: FileData, previousId?: string | null) => {
         if (!data.files || Object.keys(data.files).length === 0) return;
 
         setIsStartingSandbox(true);
@@ -282,6 +282,7 @@ export function CodePanel({
                 body: JSON.stringify({
                     action: "start",
                     fileData: data,
+                    previousSandboxId: previousId || sandboxId || undefined,
                 }),
             });
 
@@ -291,7 +292,14 @@ export function CodePanel({
             }
 
             setSandboxId(result.sandboxId);
-            setPreviewUrl(result.previewUrl);
+
+            // If private traffic token exists, use reverse-proxy endpoint to ensure seamless iframe embedding
+            if (!result.isPublic && result.trafficAccessToken) {
+                const proxyUrl = `/api/sandbox/proxy?url=${encodeURIComponent(result.previewUrl)}&token=${encodeURIComponent(result.trafficAccessToken)}`;
+                setPreviewUrl(proxyUrl);
+            } else {
+                setPreviewUrl(result.previewUrl);
+            }
         } catch (err: unknown) {
             console.error("[CodePanel] Failed to start E2B Sandbox:", err);
             const msg = err instanceof Error ? err.message : "Failed to start sandbox";
@@ -299,7 +307,7 @@ export function CodePanel({
         } finally {
             setIsStartingSandbox(false);
         }
-    }, []);
+    }, [sandboxId]);
 
     const syncSandboxFiles = useCallback(async (id: string, changedFiles: Record<string, { code: string }>) => {
         try {
@@ -634,13 +642,31 @@ export function CodePanel({
                                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                                     <span className="truncate">{previewUrl}</span>
                                 </div>
-                                <button
-                                    onClick={handleRefreshIframe}
-                                    title="Reload preview"
-                                    className="p-1 hover:text-white transition-colors cursor-pointer"
-                                >
-                                    <RefreshCw className="h-3 w-3" />
-                                </button>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                        onClick={handleCopyUrl}
+                                        title="Copy URL"
+                                        className="p-1 hover:text-white transition-colors cursor-pointer"
+                                    >
+                                        <Copy className="h-3 w-3" />
+                                    </button>
+                                    <a
+                                        href={previewUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="Open in new tab"
+                                        className="p-1 hover:text-white transition-colors cursor-pointer"
+                                    >
+                                        <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                    <button
+                                        onClick={handleRefreshIframe}
+                                        title="Reload preview"
+                                        className="p-1 hover:text-white transition-colors cursor-pointer"
+                                    >
+                                        <RefreshCw className="h-3 w-3" />
+                                    </button>
+                                </div>
                             </div>
 
                             <iframe

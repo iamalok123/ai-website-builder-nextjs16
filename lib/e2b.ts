@@ -168,9 +168,27 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         }
 
         // Ensure package.json exists with all necessary dependencies
-        if (!files["/package.json"] && !files["package.json"]) {
-            const userDeps = fileData.dependencies ?? {};
-            const packageJson = {
+        const rawPkg = files["/package.json"] || files["package.json"];
+        let packageJson: {
+            name?: string;
+            version?: string;
+            type?: string;
+            scripts?: Record<string, string>;
+            dependencies?: Record<string, string>;
+            devDependencies?: Record<string, string>;
+        } | null = null;
+
+        if (rawPkg) {
+            try {
+                packageJson = JSON.parse(rawPkg.code);
+            } catch {
+                packageJson = null;
+            }
+        }
+
+        const userDeps = fileData.dependencies ?? {};
+        if (!packageJson) {
+            packageJson = {
                 name: "zephyre-app",
                 version: "1.0.0",
                 type: "module",
@@ -192,10 +210,29 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                     vite: "^6.0.0",
                 },
             };
-            writePromises.push(
-                sandbox.files.write(`${baseDir}/package.json`, JSON.stringify(packageJson, null, 2))
-            );
+        } else {
+            packageJson.type = "module";
+            packageJson.scripts = packageJson.scripts || {};
+            packageJson.scripts.dev = "vite --host 0.0.0.0 --port 3000";
+            packageJson.dependencies = {
+                react: "^19.0.0",
+                "react-dom": "^19.0.0",
+                "lucide-react": "^1.16.0",
+                clsx: "^2.1.1",
+                "tailwind-merge": "^3.0.0",
+                ...(packageJson.dependencies || {}),
+                ...userDeps,
+            };
+            packageJson.devDependencies = {
+                "@vitejs/plugin-react": "^4.3.4",
+                vite: "^6.0.0",
+                ...(packageJson.devDependencies || {}),
+            };
         }
+
+        writePromises.push(
+            sandbox.files.write(`${baseDir}/package.json`, JSON.stringify(packageJson, null, 2))
+        );
     }
 
     await Promise.all(writePromises);
@@ -216,19 +253,19 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
 /**
  * Boots the dev server or application in the background, waits for port readiness,
- * and returns the live preview URL
+ * and returns the live preview URL along with traffic token details
  */
 export async function startSandboxApp(
     sandbox: Sandbox,
     stack: "python" | "react-node",
     baseDir = "/home/user/app"
-): Promise<{ previewUrl: string }> {
+): Promise<{ previewUrl: string; trafficAccessToken?: string; isPublic: boolean }> {
     if (stack === "python") {
         // Install requirements if present
         await sandbox.commands.run(`cd ${baseDir} && if [ -f requirements.txt ]; then pip install -r requirements.txt; fi`);
-        // Start FastAPI / Flask / Python script
+        // Start FastAPI / Flask / Python script with log redirection
         await sandbox.commands.run(
-            `cd ${baseDir} && if [ -f main.py ]; then python3 main.py; elif [ -f app.py ]; then python3 app.py; fi`,
+            `cd ${baseDir} && if [ -f main.py ]; then python3 main.py > /tmp/app.log 2>&1; elif [ -f app.py ]; then python3 app.py > /tmp/app.log 2>&1; fi`,
             { background: true }
         );
     } else {
@@ -236,8 +273,8 @@ export async function startSandboxApp(
         await sandbox.commands.run(
             `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || npm install --silent --no-audit --no-fund --force || true)`
         );
-        // Start Vite dev server in background
-        await sandbox.commands.run(`cd ${baseDir} && npm run dev`, { background: true });
+        // Start Vite dev server in background with log redirection for diagnosis
+        await sandbox.commands.run(`cd ${baseDir} && npm run dev > /tmp/dev-server.log 2>&1`, { background: true });
     }
 
     // Wait up to 15 seconds for the dev server to start listening on port 3000
@@ -247,12 +284,15 @@ export async function startSandboxApp(
             { timeoutMs: 18000 }
         );
     } catch {
-        // If curl times out, proceed to return preview URL
+        // Dev server startup verification timed out; preview URL will still be returned
     }
 
     // Port 3000 is the standard preview port
     const host = sandbox.getHost(3000);
+    const trafficAccessToken = sandbox.trafficAccessToken;
     return {
         previewUrl: `https://${host}`,
+        trafficAccessToken,
+        isPublic: !trafficAccessToken,
     };
 }
