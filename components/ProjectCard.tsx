@@ -7,7 +7,6 @@ import { Trash2, MessageSquare, ArrowUpRight, Loader2 } from "lucide-react";
 import { ProjectSummary } from "@/actions/projects";
 import { DeleteProjectModal } from "@/components/DeleteProjectModal";
 
-
 interface ProjectCardProps {
     projects: ProjectSummary[];
 }
@@ -19,9 +18,11 @@ export function ProjectCard({ projects }: ProjectCardProps) {
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {projects.map((project) => {
                 const title = project.title ?? "Untitled project";
-                const timeAgo = formatDistanceToNow(new Date(project.updatedAt), {
-                    addSuffix: true,
-                });
+                const timeAgo = project.updatedAt
+                    ? formatDistanceToNow(new Date(project.updatedAt), {
+                        addSuffix: true,
+                    })
+                    : "";
                 const msgCount = Math.floor(project.messageCount / 2);
                 const isNavigating = navigatingId === project.id;
 
@@ -76,7 +77,9 @@ export function ProjectCard({ projects }: ProjectCardProps) {
                                 <MessageSquare className="h-3 w-3 text-orange-400" />
                                 {msgCount} message{msgCount !== 1 ? "s" : ""}
                             </span>
-                            <span className="text-[11px] font-medium text-zinc-500">{timeAgo}</span>
+                            <span suppressHydrationWarning className="text-[11px] font-medium text-zinc-500">
+                                {timeAgo}
+                            </span>
                         </div>
                     </div>
                 );
