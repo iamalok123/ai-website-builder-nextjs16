@@ -293,8 +293,6 @@ export async function startSandboxApp(
         await sandbox.commands.run(
             `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || npm install --silent --no-audit --no-fund --force || true)`
         );
-        // Kill any previous vite process to guarantee clean port 3000 binding
-        await sandbox.commands.run(`pkill -f vite || true`);
         // Start Vite dev server in background with log redirection for diagnosis
         await sandbox.commands.run(`cd ${baseDir} && npm run dev > /tmp/dev-server.log 2>&1`, { background: true });
     }

@@ -1,12 +1,11 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
     Dialog,
-    DialogClose,
     DialogContent,
     DialogDescription,
     DialogFooter,
@@ -17,59 +16,86 @@ import {
 import { Button } from "@/components/ui/button";
 import { deleteProject, ProjectSummary } from "@/actions/projects";
 
-// ─── Props ────────────────────────────────────────────────────────────────────
-
 interface DeleteProjectModalProps {
     project: ProjectSummary;
     children: React.ReactNode;
+    onDeleted?: (id: string) => void;
 }
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export function DeleteProjectModal({
     project,
     children,
+    onDeleted,
 }: DeleteProjectModalProps) {
     const router = useRouter();
+    const [open, setOpen] = useState(false);
     const [isPending, startTransition] = useTransition();
 
-    const handleDelete = () => {
+    const handleDelete = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
         startTransition(async () => {
             try {
-                await deleteProject(project.id);
-                toast.success("Project deleted.");
+                const res = await deleteProject(project.id);
+                if (res?.success === false) {
+                    toast.error(res.error || "Failed to delete project.");
+                    return;
+                }
+                toast.success(`"${project.title ?? "Project"}" deleted successfully.`);
+                setOpen(false);
+                onDeleted?.(project.id);
                 router.refresh();
-            } catch {
+            } catch (err) {
+                console.error("[DeleteProjectModal Error]:", err);
                 toast.error("Failed to delete project. Please try again.");
             }
         });
     };
 
     return (
-        <Dialog>
-            <DialogTrigger className="cursor-pointer">{children}</DialogTrigger>
-            <DialogContent className="border-white/8 bg-[#111111] text-white sm:max-w-sm">
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger
+                onClick={(e: React.MouseEvent) => {
+                    e.stopPropagation();
+                }}
+            >
+                {children}
+            </DialogTrigger>
+            <DialogContent
+                onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                className="border-white/10 bg-[#0e0e14] text-white sm:max-w-sm rounded-2xl shadow-2xl"
+            >
                 <DialogHeader>
-                    <DialogTitle className="text-sm font-semibold text-white/90">
-                        Delete project?
+                    <DialogTitle className="text-base font-bold text-white">
+                        Delete Project?
                     </DialogTitle>
-                    <DialogDescription className="text-xs text-white/35">
+                    <DialogDescription className="text-xs text-zinc-400 mt-1">
                         &ldquo;{project.title ?? "Untitled project"}&rdquo; will be
                         permanently deleted. This cannot be undone.
                     </DialogDescription>
                 </DialogHeader>
 
-                <DialogFooter className="gap-2">
-                    <DialogClose>
-                        <span className="text-xs text-white/40 hover:text-white/70 pr-2">
-                            Cancel
-                        </span>
-                    </DialogClose>
+                <DialogFooter className="gap-2 mt-4">
                     <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={isPending}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setOpen(false);
+                        }}
+                        className="text-xs text-zinc-400 hover:text-white cursor-pointer"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        type="button"
                         size="sm"
                         onClick={handleDelete}
                         disabled={isPending}
-                        className="h-8 rounded-full bg-red-500/90 px-4 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+                        className="h-8 rounded-xl bg-red-600 hover:bg-red-500 px-4 text-xs font-semibold text-white disabled:opacity-50 cursor-pointer"
                     >
                         {isPending && <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />}
                         Delete

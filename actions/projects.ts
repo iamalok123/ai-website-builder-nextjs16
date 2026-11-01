@@ -68,7 +68,7 @@ export async function getUserProjects(): Promise<ProjectSummary[]> {
         return {
             id: w.id,
             title: w.title,
-            firstPrompt: firstUserMsg?.content?.slice(0, 120) ?? null, // ← new
+            firstPrompt: firstUserMsg?.content?.slice(0, 120) ?? null,
             createdAt: w.createdAt,
             updatedAt: w.updatedAt,
             messageCount: Array.isArray(w.messages) ? w.messages.length : 0,
@@ -78,23 +78,38 @@ export async function getUserProjects(): Promise<ProjectSummary[]> {
 
 // ─── Delete a workspace ───────────────────────────────────────────────────────
 
-export async function deleteProject(workspaceId: string): Promise<void> {
-    const { userId: clerkId } = await auth();
-    if (!clerkId) redirect("/");
+export async function deleteProject(workspaceId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { userId: clerkId } = await auth();
+        if (!clerkId) {
+            return { success: false, error: "Unauthorized" };
+        }
 
-    let user = await db.user.findUnique({
-        where: { clerkId },
-        select: { id: true },
-    });
-    if (!user) {
-        const synced = await checkUser();
-        if (synced) user = { id: synced.id };
+        let user = await db.user.findUnique({
+            where: { clerkId },
+            select: { id: true },
+        });
+        if (!user) {
+            const synced = await checkUser();
+            if (synced) user = { id: synced.id };
+        }
+        if (!user) {
+            return { success: false, error: "User account not found" };
+        }
+
+        const deleteOp = await db.workspace.deleteMany({
+            where: { id: workspaceId, userId: user.id },
+        });
+
+        if (deleteOp.count === 0) {
+            return { success: false, error: "Project not found or already deleted" };
+        }
+
+        revalidatePath("/projects");
+        return { success: true };
+    } catch (err: unknown) {
+        console.error("[deleteProject Error]:", err);
+        const msg = err instanceof Error ? err.message : "Failed to delete project";
+        return { success: false, error: msg };
     }
-    if (!user) redirect("/");
-
-    await db.workspace.deleteMany({
-        where: { id: workspaceId, userId: user.id },
-    });
-
-    revalidatePath("/projects");
 }
