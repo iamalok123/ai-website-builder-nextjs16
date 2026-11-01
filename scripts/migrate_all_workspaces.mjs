@@ -50,7 +50,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 );`
     };
 
-    // 5. Ensure /vite.config.js exists
+    // 5. Ensure /vite.config.js exists with allowedHosts, polling, and HMR
     updated["/vite.config.js"] = {
         code: `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -61,6 +61,14 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 3000,
     strictPort: true,
+    allowedHosts: true,
+    watch: {
+      usePolling: true,
+      interval: 100,
+    },
+    hmr: {
+      clientPort: 443,
+    },
   },
 });`
     };

@@ -7,6 +7,7 @@ import { CREDIT_COST_PER_GENERATION } from "@/lib/constants";
 import type { Message, FileData } from "@/types/workspace";
 import { aj } from "@/lib/arcjet";
 import { revalidatePath } from "next/cache";
+import { STANDARD_VITE_CONFIG } from "@/lib/e2b";
 
 
 
@@ -264,24 +265,17 @@ function ensureStandardFiles(
         };
     }
 
-    // Ensure root vite.config.js with allowedHosts: true
+    // Ensure root vite.config.js with allowedHosts: true, polling, and HMR
     const viteKey = Object.keys(updatedFiles).find(
         (k) => k === "/vite.config.js" || k === "vite.config.js" || k === "/vite.config.ts" || k === "vite.config.ts"
     );
-    if (!viteKey || !updatedFiles[viteKey].code.includes("allowedHosts")) {
+    if (
+        !viteKey ||
+        !updatedFiles[viteKey].code.includes("allowedHosts: true") ||
+        !updatedFiles[viteKey].code.includes("usePolling")
+    ) {
         updatedFiles["/vite.config.js"] = {
-            code: `import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    host: '0.0.0.0',
-    port: 3000,
-    strictPort: true,
-    allowedHosts: true,
-  },
-});`
+            code: STANDARD_VITE_CONFIG,
         };
     }
 

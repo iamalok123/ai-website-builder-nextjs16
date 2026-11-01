@@ -80,6 +80,13 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     allowedHosts: true,
+    watch: {
+      usePolling: true,
+      interval: 100,
+    },
+    hmr: {
+      clientPort: 443,
+    },
   },
 });
 `.trim();
@@ -110,12 +117,16 @@ export async function writeFilesToSandbox(
             normalizedFiles["App.jsx"] = normalizedFiles["src/App.jsx"];
         }
 
-        // Strictly enforce allowedHosts: true in vite.config
+        // Strictly enforce allowedHosts: true, polling, and HMR in vite.config
         let hasViteConfig = false;
         for (const [key, code] of Object.entries(normalizedFiles)) {
             if (key === "vite.config.js" || key === "vite.config.ts" || key === "vite.config.mjs") {
                 hasViteConfig = true;
-                if (!code.includes("allowedHosts")) {
+                if (
+                    !code.includes("allowedHosts: true") ||
+                    !code.includes("usePolling") ||
+                    !code.includes("clientPort: 443")
+                ) {
                     normalizedFiles[key] = STANDARD_VITE_CONFIG;
                 }
             }
@@ -282,6 +293,8 @@ export async function startSandboxApp(
         await sandbox.commands.run(
             `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || npm install --silent --no-audit --no-fund --force || true)`
         );
+        // Kill any previous vite process to guarantee clean port 3000 binding
+        await sandbox.commands.run(`pkill -f vite || true`);
         // Start Vite dev server in background with log redirection for diagnosis
         await sandbox.commands.run(`cd ${baseDir} && npm run dev > /tmp/dev-server.log 2>&1`, { background: true });
     }
@@ -289,7 +302,7 @@ export async function startSandboxApp(
     // Wait up to 20 seconds for the dev server to start responding on port 3000
     try {
         await sandbox.commands.run(
-            `for i in $(seq 1 40); do if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1 || curl -s -f http://localhost:3000/ > /dev/null 2>&1; then exit 0; fi; sleep 0.5; done; exit 0`,
+            `for i in $(seq 1 60); do if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1 || curl -s -f http://localhost:3000/ > /dev/null 2>&1; then exit 0; fi; sleep 0.25; done; exit 0`,
             { timeoutMs: 22000 }
         );
     } catch {

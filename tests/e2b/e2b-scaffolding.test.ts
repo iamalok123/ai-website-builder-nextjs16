@@ -1,21 +1,5 @@
 import { describe, it, expect } from "vitest";
-
-function generateViteConfig(): string {
-  return `
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    host: '0.0.0.0',
-    port: 3000,
-    strictPort: true,
-    allowedHosts: true,
-  },
-});
-`.trim();
-}
+import { STANDARD_VITE_CONFIG } from "@/lib/e2b";
 
 function generateIndexHtml(title: string): string {
   return `
@@ -65,12 +49,13 @@ function generatePackageJson(userDeps: Record<string, string> = {}): string {
 }
 
 describe("E2B Scaffolding & Configuration Generator", () => {
-  it("should generate vite.config.js with allowedHosts: true to prevent 403 proxy blocks", () => {
-    const config = generateViteConfig();
-    expect(config).toContain("allowedHosts: true");
-    expect(config).toContain("host: '0.0.0.0'");
-    expect(config).toContain("port: 3000");
-    expect(config).toContain("strictPort: true");
+  it("should generate vite.config.js with allowedHosts: true, polling watch, and HMR clientPort", () => {
+    expect(STANDARD_VITE_CONFIG).toContain("allowedHosts: true");
+    expect(STANDARD_VITE_CONFIG).toContain("host: '0.0.0.0'");
+    expect(STANDARD_VITE_CONFIG).toContain("port: 3000");
+    expect(STANDARD_VITE_CONFIG).toContain("strictPort: true");
+    expect(STANDARD_VITE_CONFIG).toContain("usePolling: true");
+    expect(STANDARD_VITE_CONFIG).toContain("clientPort: 443");
   });
 
   it("should generate index.html with Tailwind CDN and correct entry point", () => {

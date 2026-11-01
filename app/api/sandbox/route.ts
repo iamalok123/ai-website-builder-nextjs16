@@ -6,6 +6,7 @@ import {
     killE2bSandbox,
     writeFilesToSandbox,
     startSandboxApp,
+    STANDARD_VITE_CONFIG,
 } from "@/lib/e2b";
 import type { FileData } from "@/types/workspace";
 
@@ -89,31 +90,63 @@ export async function POST(req: NextRequest) {
             }
 
             const baseDir = "/home/user/app";
+            const normalizedSync: Record<string, string> = {};
+            let hasPackageJsonChange = false;
 
-            const promises: Promise<unknown>[] = [];
             for (const [rawPath, fileObj] of Object.entries(filesToSync)) {
                 const cleanPath = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
-                let codeToWrite = fileObj.code;
-                if (cleanPath.startsWith("vite.config") && !codeToWrite.includes("allowedHosts")) {
-                    codeToWrite = `
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+                let codeToWrite = fileObj?.code ?? "";
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    host: '0.0.0.0',
-    port: 3000,
-    strictPort: true,
-    allowedHosts: true,
-  },
-});
-`.trim();
+                if (cleanPath.startsWith("vite.config")) {
+                    if (
+                        !codeToWrite.includes("allowedHosts: true") ||
+                        !codeToWrite.includes("usePolling")
+                    ) {
+                        codeToWrite = STANDARD_VITE_CONFIG;
+                    }
                 }
-                promises.push(sandbox.files.write(`${baseDir}/${cleanPath}`, codeToWrite));
+
+                normalizedSync[cleanPath] = codeToWrite;
+
+                if (cleanPath === "App.jsx" || cleanPath === "src/App.jsx") {
+                    normalizedSync["App.jsx"] = codeToWrite;
+                    normalizedSync["src/App.jsx"] = codeToWrite;
+                } else if (cleanPath.startsWith("components/")) {
+                    normalizedSync[`src/${cleanPath}`] = codeToWrite;
+                } else if (cleanPath.startsWith("src/components/")) {
+                    normalizedSync[cleanPath.replace(/^src\//, "")] = codeToWrite;
+                } else if (cleanPath === "package.json") {
+                    hasPackageJsonChange = true;
+                }
             }
 
+            // Ensure parent directories exist before writing
+            const dirsToCreate = new Set<string>();
+            for (const cleanPath of Object.keys(normalizedSync)) {
+                const lastSlash = cleanPath.lastIndexOf("/");
+                if (lastSlash !== -1) {
+                    dirsToCreate.add(`${baseDir}/${cleanPath.slice(0, lastSlash)}`);
+                }
+            }
+
+            if (dirsToCreate.size > 0) {
+                const dirList = Array.from(dirsToCreate).map((d) => `"${d}"`).join(" ");
+                await sandbox.commands.run(`mkdir -p ${dirList}`);
+            }
+
+            const promises = Object.entries(normalizedSync).map(([cleanPath, code]) =>
+                sandbox.files.write(`${baseDir}/${cleanPath}`, code)
+            );
+
             await Promise.all(promises);
+
+            if (hasPackageJsonChange) {
+                sandbox.commands.run(
+                    `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || true)`,
+                    { background: true }
+                ).catch((err) => console.warn("[E2B Sandbox Sync] Background npm install warning:", err));
+            }
+
             return NextResponse.json({ success: true, syncedCount: promises.length });
         }
 

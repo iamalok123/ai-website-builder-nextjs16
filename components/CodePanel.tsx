@@ -242,6 +242,7 @@ export function CodePanel({
     const [isExporting, setIsExporting] = useState(false);
     const [improveInput, setImproveInput] = useState("");
     const [showImproveInput, setShowImproveInput] = useState(false);
+    const [isIframeLoading, setIsIframeLoading] = useState(false);
 
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const files = useMemo(() => fileData?.files ?? {}, [fileData?.files]);
@@ -268,11 +269,14 @@ export function CodePanel({
         }
     }, [fileList, files, selectedFile]);
 
-    // Auto-patch legacy vite.config to enforce allowedHosts: true for Vite 6 preview
+    // Auto-patch legacy vite.config to enforce allowedHosts: true, polling, and HMR for Vite 6 preview
     useEffect(() => {
         if (!fileData || !fileData.files) return;
         const viteKey = Object.keys(fileData.files).find((k) => k.endsWith("vite.config.js") || k.endsWith("vite.config.ts"));
-        if (viteKey && fileData.files[viteKey]?.code && !fileData.files[viteKey].code.includes("allowedHosts")) {
+        const currentCode = viteKey ? fileData.files[viteKey]?.code : null;
+        const needsPatch = !currentCode || !currentCode.includes("allowedHosts: true") || !currentCode.includes("usePolling");
+
+        if (needsPatch) {
             const patchedViteConfig = `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -283,13 +287,21 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     allowedHosts: true,
+    watch: {
+      usePolling: true,
+      interval: 100,
+    },
+    hmr: {
+      clientPort: 443,
+    },
   },
 });`;
+            const keyToPatch = viteKey || "/vite.config.js";
             onFilePatch({
                 ...fileData,
                 files: {
                     ...fileData.files,
-                    [viteKey]: { code: patchedViteConfig },
+                    [keyToPatch]: { code: patchedViteConfig },
                 },
             });
         }
@@ -422,6 +434,15 @@ export default defineConfig({
             [targetKey]: { code: newCode },
         };
 
+        // Dual-mirror App.jsx across root and src/ so Vite resolves immediate HMR
+        const isApp = targetKey.endsWith("App.jsx") || targetKey.endsWith("App.js");
+        if (isApp) {
+            if (updatedFiles["/App.jsx"]) updatedFiles["/App.jsx"] = { code: newCode };
+            if (updatedFiles["App.jsx"]) updatedFiles["App.jsx"] = { code: newCode };
+            if (updatedFiles["/src/App.jsx"]) updatedFiles["/src/App.jsx"] = { code: newCode };
+            if (updatedFiles["src/App.jsx"]) updatedFiles["src/App.jsx"] = { code: newCode };
+        }
+
         onFilePatch({
             files: updatedFiles,
             dependencies: fileData.dependencies ?? {},
@@ -438,17 +459,27 @@ export default defineConfig({
         if (sandboxId) {
             debounceTimerRef.current = setTimeout(() => {
                 syncSandboxFiles(sandboxId, { [targetKey]: { code: newCode } });
-            }, 350);
+            }, 300);
         }
     };
 
     // Instant tab switch with immediate debounce flush
     const handleTabChange = (val: string) => {
-        if (val === "preview" && debounceTimerRef.current) {
-            clearTimeout(debounceTimerRef.current);
-            debounceTimerRef.current = null;
-            if (sandboxId && selectedFile && files[selectedFile]) {
-                syncSandboxFiles(sandboxId, { [selectedFile]: files[selectedFile] });
+        if (val === "preview") {
+            if (debounceTimerRef.current) {
+                clearTimeout(debounceTimerRef.current);
+                debounceTimerRef.current = null;
+            }
+            if (sandboxId && selectedFile) {
+                let targetKey = selectedFile;
+                if (!files[targetKey]) {
+                    if (targetKey.startsWith("/") && files[targetKey.slice(1)]) targetKey = targetKey.slice(1);
+                    else if (!targetKey.startsWith("/") && files["/" + targetKey]) targetKey = "/" + targetKey;
+                }
+                const fileObj = files[targetKey] || (selectedCode ? { code: selectedCode } : null);
+                if (fileObj) {
+                    syncSandboxFiles(sandboxId, { [targetKey]: fileObj });
+                }
             }
         }
         setActiveTab(val as ActiveTab);
@@ -470,6 +501,7 @@ export default defineConfig({
     // Reload iframe with cache-busting timestamp
     const handleRefreshIframe = () => {
         if (iframeRef.current && previewUrl) {
+            setIsIframeLoading(true);
             const separator = previewUrl.includes("?") ? "&" : "?";
             iframeRef.current.src = `${previewUrl}${separator}_t=${Date.now()}`;
             toast.info("Reloading preview frame...");
@@ -761,13 +793,19 @@ export default defineConfig({
                                 </div>
                             </div>
 
-                            <iframe
-                                ref={iframeRef}
-                                src={previewUrl}
-                                title={appTitle || "Zephyre Preview"}
-                                className="h-full w-full flex-1 border-0 bg-black"
-                                allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write"
-                            />
+                            <div className="relative flex-1 w-full min-h-0 bg-[#0e0e14]">
+                                {isIframeLoading && (
+                                    <div className="absolute top-0 left-0 right-0 h-0.5 bg-linear-to-r from-orange-500 via-amber-400 to-emerald-400 animate-pulse z-10" />
+                                )}
+                                <iframe
+                                    ref={iframeRef}
+                                    src={previewUrl}
+                                    onLoad={() => setIsIframeLoading(false)}
+                                    title={appTitle || "Zephyre Preview"}
+                                    className="h-full w-full border-0 bg-[#0e0e14]"
+                                    allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write"
+                                />
+                            </div>
                         </div>
                     )}
                 </TabsContent>
