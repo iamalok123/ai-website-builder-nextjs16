@@ -39,4 +39,6 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.5-flash
+      - key: E2B_SANDBOX_API_KEY
+        sync: false
 
