@@ -78,7 +78,7 @@ export default function Home() {
     <main className='min-h-screen bg-black text-white selection:bg-orange-500/30 selection:text-orange-200 overflow-x-clip w-full relative'>
 
       {/* HERO SECTION - HEXAGON BACKGROUND WITH ORANGE THEME & MATCHING INTERFACE */}
-      <section id="hero" className="relative min-h-dvh sm:min-h-0 pt-20 sm:pt-24 pb-8 sm:pb-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex flex-col items-center justify-center w-full overflow-hidden">
+      <section id="hero" className="relative min-h-dvh sm:min-h-0 pt-14 sm:pt-24 pb-8 sm:pb-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex flex-col items-center justify-center w-full overflow-hidden">
 
         {/* Ambient Radial Spotlight Glows */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-72 sm:h-112 w-72 sm:w-md rounded-full bg-orange-600/20 blur-[100px] sm:blur-[140px] pointer-events-none" />
@@ -102,7 +102,7 @@ export default function Home() {
         <div className="relative w-full flex flex-col items-center text-center justify-center transition-all z-10 pointer-events-none">
 
           {/* Main Hero Headline */}
-          <h1 className="z-10 mx-auto max-w-4xl text-balance font-sans text-3xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.2] sm:leading-[1.08] drop-shadow-sm mb-2 sm:mb-0">
+          <h1 className="z-10 mx-auto max-w-4xl text-balance font-sans text-[32px] sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.18] sm:leading-[1.08] drop-shadow-sm mb-3 sm:mb-0">
             AI-Powered{" "}
             <span className="bg-linear-to-r from-orange-400 via-amber-400 to-red-400 bg-clip-text text-transparent">
               Website Builder
@@ -112,12 +112,12 @@ export default function Home() {
           </h1>
 
           {/* Subtitle */}
-          <p className="z-10 mx-auto mt-2 sm:mt-5 max-w-xs sm:max-w-2xl text-balance text-xs sm:text-base leading-relaxed text-zinc-400 font-normal relative px-2">
+          <p className="z-10 mx-auto mt-3 sm:mt-5 max-w-sm sm:max-w-2xl text-balance text-sm sm:text-base leading-relaxed text-zinc-300 sm:text-zinc-400 font-normal relative px-2">
             Just describe what you want to build, and Zephyre AI creates a clear, organized website structure you can immediately customize and export.
           </p>
 
           {/* ── AI WEBSITE GENERATOR INPUT PROMPT CONTAINER ────────────────── */}
-          <div className="z-20 mt-6 sm:mt-12 w-full max-w-2xl relative px-1 sm:px-0 pointer-events-auto">
+          <div className="z-20 mt-8 sm:mt-12 w-full max-w-2xl relative px-1 sm:px-0 pointer-events-auto">
 
             {/* Glowing Gradient Border Wrapper */}
             <div className="p-[2.5px] rounded-2xl bg-linear-to-r from-amber-500/80 via-orange-500/80 to-red-500/80 shadow-[0_0_40px_rgba(249,115,22,0.35)] hover:shadow-[0_0_60px_rgba(249,115,22,0.5)] transition-all duration-300">
