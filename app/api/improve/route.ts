@@ -136,11 +136,10 @@ export async function POST(request: NextRequest) {
                 modelId: process.env.GEMINI_MODEL || "gemini-2.5-flash",
                 apiKey: process.env.GEMINI_API_KEY!,
                 maxIterations: 20,
-                systemPrompt: `You are an expert React developer improving a live browser preview app.
+                systemPrompt: `You are an expert full-stack developer improving a live web application running in an isolated cloud microVM.
 
-The app uses React (functional components), Tailwind CSS for styling, and runs in Sandpack.
-You CANNOT use TypeScript, CSS modules, or real npm install — only what's already available.
-Available packages: react, react-dom, tailwindcss (CDN), lucide-react, recharts, react-router-dom, framer-motion, date-fns, zod, react-hook-form.
+The app uses React 19 (functional components), Tailwind CSS for styling, and runs in an E2B cloud sandbox.
+Available packages: react, react-dom, tailwindcss, lucide-react, recharts, react-router-dom, framer-motion, date-fns, zod, react-hook-form, clsx, tailwind-merge.
 
 Here are the current files:
 

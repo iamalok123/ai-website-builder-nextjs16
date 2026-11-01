@@ -1,15 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
-import {
-    SandpackProvider,
-    SandpackLayout,
-    SandpackCodeEditor,
-    SandpackPreview,
-    SandpackFileExplorer,
-    useSandpack,
-} from "@codesandbox/sandpack-react";
-import { amethyst } from "@codesandbox/sandpack-themes";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import {
     Eye,
     Code2,
@@ -19,76 +10,28 @@ import {
     Loader2,
     ArrowUp,
     MessageSquare,
+    ExternalLink,
+    Copy,
+    Check,
+    RefreshCw,
+    Smartphone,
+    Tablet,
+    Monitor,
+    FileCode,
+    FileJson,
+    FileText,
 } from "lucide-react";
 import { RingLoader } from "react-spinners";
 import JSZip from "jszip";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PricingModal } from "@/components/PricingModal";
 import type { FileData, StatusStep } from "@/types/workspace";
 
-
-
-
-
-// Placeholder 
-const PLACEHOLDER_FILES = {
-    "/App.jsx": {
-        code: `
-            export default function App() {
-                return (
-                    <div style={{
-                        minHeight: "100vh",
-                        background: "#0a0a0a",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontFamily: "system-ui, sans-serif",
-                    }}>
-                        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.3)" }}>
-                            <div style={{ fontSize: 40, marginBottom: 16 }}>⚡</div>
-                            <p style={{ fontSize: 14 }}>Your app will appear here</p>
-                        </div>
-                    </div>
-                );
-            }
-        `,
-    },
-    "/App.js": {
-        code: `import App from "./App.jsx";\nexport default App;\n`,
-    },
-};
-
-
-
-
-// Base dependencies 
-const BASE_DEPENDENCIES: Record<string, string> = {
-    "react-is": "latest",
-    "react-router-dom": "latest",
-    "lucide-react": "latest",
-    recharts: "latest",
-    "date-fns": "latest",
-    "framer-motion": "latest",
-    "react-hook-form": "latest",
-    "@hookform/resolvers": "latest",
-    zod: "latest",
-    "@radix-ui/react-dialog": "latest",
-    "@radix-ui/react-dropdown-menu": "latest",
-    "@radix-ui/react-tabs": "latest",
-    "@radix-ui/react-tooltip": "latest",
-    "@radix-ui/react-accordion": "latest",
-    "@radix-ui/react-select": "latest",
-    axios: "latest",
-    clsx: "latest",
-    "class-variance-authority": "latest",
-    "tailwind-merge": "latest",
-};
-
-
-
-// Types 
+// Types
 type ActiveTab = "preview" | "code";
+type Viewport = "desktop" | "tablet" | "mobile";
 
 interface CodePanelProps {
     fileData: FileData | null;
@@ -103,507 +46,6 @@ interface CodePanelProps {
     onToggleView: () => void;
 }
 
-
-
-
-
-
-// ─── SandpackInner ────────────────────────────────────────────────────────────
-// Lives inside SandpackProvider so it can call useSandpack().
-// Receives fileData as a prop and uses updateFile() to push code changes
-// into the live Sandpack instance without remounting the provider.
-
-function SandpackInner({
-    isGenerating,
-    statusLog,
-    activeTab,
-    setActiveTab,
-    onImprove,
-    onFixError,
-    fileData,
-    appTitle,
-    isImproving,
-    isProUser,
-    onFilePatch,
-    onToggleView,
-}: {
-    isGenerating: boolean;
-    statusLog: StatusStep[];
-    activeTab: ActiveTab;
-    setActiveTab: (t: ActiveTab) => void;
-    onImprove: (userRequest: string) => Promise<void>;
-    onFixError: (error: string) => Promise<void>;
-    fileData: FileData | null;
-    appTitle: string | null;
-    isImproving: boolean;
-    isProUser: boolean;
-    onFilePatch: (patches: FileData) => void;
-    onToggleView: () => void;
-}) {
-    const { sandpack, listen } = useSandpack();
-    const [previewError, setPreviewError] = useState<string | null>(null);
-    const [isExporting, setIsExporting] = useState(false);
-    const [improveInput, setImproveInput] = useState("");
-    const [showImproveInput, setShowImproveInput] = useState(false);
-    const unsubscribeRef = useRef<(() => void) | null>(null);
-
-    // Push file content updates into Sandpack without remounting.
-    // This runs whenever fileData changes (e.g. after improve completes).
-    // SandpackProvider key only changes when the file path set changes,
-    // so this is the safe way to update existing file contents.
-    const prevFilesRef = useRef<Record<string, { code: string }>>({});
-    useEffect(() => {
-        if (!fileData?.files) return;
-        const prev = prevFilesRef.current;
-        for (const [path, { code }] of Object.entries(fileData.files)) {
-            if (prev[path]?.code !== code) {
-                sandpack.updateFile(path, code);
-            }
-        }
-        prevFilesRef.current = fileData.files;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fileData?.files]);
-
-    // Sync manual user edits in Sandpack back to the main fileData state
-    // We debounce this by 1 second so it doesn't cause lag while typing
-    useEffect(() => {
-        const timeout = setTimeout(() => {
-            const currentSandpackFiles = sandpack.files;
-            let hasChanges = false;
-            for (const [path, fileObj] of Object.entries(currentSandpackFiles)) {
-                if (
-                    path === "/App.js" &&
-                    currentSandpackFiles["/App.jsx"] &&
-                    (fileObj.code.includes("Hello world") ||
-                        fileObj.code.includes('import App from "./App.jsx"'))
-                ) {
-                    continue;
-                }
-                if (prevFilesRef.current[path]?.code !== fileObj.code) {
-                    hasChanges = true;
-                    prevFilesRef.current[path] = { code: fileObj.code };
-                }
-            }
-            if (hasChanges) {
-                const formattedFiles: Record<string, { code: string }> = {};
-                for (const [k, v] of Object.entries(currentSandpackFiles)) {
-                    formattedFiles[k] = { code: typeof v === "string" ? v : v.code };
-                }
-                onFilePatch({
-                    files: formattedFiles,
-                    dependencies: fileData?.dependencies ?? {},
-                    title: fileData?.title,
-                });
-            }
-        }, 1000);
-
-        return () => clearTimeout(timeout);
-    }, [sandpack.files, onFilePatch, fileData?.dependencies, fileData?.title]);
-
-    // Listen for Sandpack runtime errors
-    useEffect(() => {
-        unsubscribeRef.current = listen((msg) => {
-            if (
-                msg.type === "action" &&
-                "action" in msg &&
-                msg.action === "show-error"
-            ) {
-                const errMsg =
-                    "message" in msg && typeof msg.message === "string"
-                        ? msg.message
-                        : "An error occurred in the preview.";
-                setPreviewError(errMsg);
-                return;
-            }
-            if (msg.type === "compile") {
-                const errMsg =
-                    "message" in msg && typeof msg.message === "string"
-                        ? msg.message
-                        : "Compile error in preview.";
-                setPreviewError(errMsg);
-                return;
-            }
-            if (msg.type === "success") {
-                setPreviewError(null);
-            }
-        });
-        return () => unsubscribeRef.current?.();
-    }, [listen]);
-
-    const handleImproveSubmit = async () => {
-        const trimmed = improveInput.trim();
-        if (!trimmed || isImproving) return;
-        setImproveInput("");
-        setShowImproveInput(false);
-        await onImprove(trimmed);
-    };
-
-    // ── Export to ZIP ──────────────────────────────────────────────────────────
-    const handleExportZip = async () => {
-        if (isExporting) return;
-        setIsExporting(true);
-        try {
-            const filesToZip =
-                Object.keys(sandpack.files).length > 0
-                    ? sandpack.files
-                    : fileData?.files ?? {};
-
-            const dependencies = {
-                ...BASE_DEPENDENCIES,
-                ...(fileData?.dependencies ?? {}),
-            };
-
-            const zip = new JSZip();
-
-            const packageJson = {
-                name: "zephyre-app",
-                version: "1.0.0",
-                private: true,
-                type: "module",
-                scripts: {
-                    dev: "vite",
-                    build: "vite build",
-                    preview: "vite preview",
-                },
-                dependencies: {
-                    react: "^18.3.1",
-                    "react-dom": "^18.3.1",
-                    ...dependencies,
-                },
-                devDependencies: {
-                    "@vitejs/plugin-react": "^4.3.4",
-                    vite: "^6.0.0",
-                },
-            };
-            zip.file("package.json", JSON.stringify(packageJson, null, 2));
-
-            zip.file(
-                "vite.config.js",
-                `import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    port: 3000,
-    open: true,
-  },
-});
-`
-            );
-
-            zip.file(
-                "index.html",
-                `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${appTitle ? appTitle.replace(/</g, "&lt;").replace(/>/g, "&gt;") : "Zephyre App"}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-</body>
-</html>`
-            );
-
-            for (const [filePath, fileObj] of Object.entries(filesToZip)) {
-                // Avoid overwriting Vite's entry points
-                if (filePath === "/index.js" || filePath === "/main.jsx" || filePath === "/index.html") {
-                    continue;
-                }
-                const code =
-                    typeof fileObj === "object" && fileObj !== null && "code" in fileObj
-                        ? (fileObj as { code: string }).code
-                        : "";
-                const zipPath = filePath.startsWith("/")
-                    ? `src${filePath}`
-                    : `src/${filePath}`;
-                zip.file(zipPath, code);
-            }
-
-            const hasAppJsx = Object.keys(filesToZip).some(
-                (f) => f === "/App.jsx" || f === "App.jsx"
-            );
-            const appImport = hasAppJsx ? "./App.jsx" : "./App";
-
-            zip.file(
-                "src/main.jsx",
-                `import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from '${appImport}';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);`
-            );
-
-            zip.file(
-                "README.md",
-                `# ${appTitle || "Zephyre App"}\n\nGenerated with [Zephyre](https://zephyre.app).\n\n## Getting started\n\n\`\`\`bash\nnpm install\nnpm run dev\n\`\`\`\n\n## Production build\n\n\`\`\`bash\nnpm run build\n\`\`\`\n`
-            );
-
-            const blob = await zip.generateAsync({ type: "blob" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            const zipName = appTitle
-                ? `${appTitle
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]+/g, "-")
-                    .replace(/^-|-$/g, "")}.zip`
-                : "zephyre-app.zip";
-            a.download = zipName;
-            a.click();
-            URL.revokeObjectURL(url);
-        } catch (err) {
-            console.error("Export failed:", err);
-        } finally {
-            setIsExporting(false);
-        }
-    };
-
-    const currentStepLabel =
-        statusLog[statusLog.length - 1]?.label ?? "Generating…";
-
-    return (
-        <Tabs
-            value={activeTab}
-            onValueChange={(v) => setActiveTab(v as ActiveTab)}
-            className="relative flex h-full w-full flex-col gap-0 min-h-0 overflow-hidden"
-        >
-            {/* Tabs + Actions bar */}
-            <div className="flex h-11 shrink-0 items-center justify-between border-b border-white/6 px-2.5 bg-[#0d0d0d]">
-                <TabsList
-                    variant="line"
-                    className="h-auto gap-0 rounded-none bg-transparent p-0"
-                >
-                    <TabsTrigger className="border-b-2 pt-2" value="code">
-                        <Code2 className="h-3.5 w-3.5" />
-                        Code
-                    </TabsTrigger>
-                    <TabsTrigger className="border-b-2 pt-2" value="preview">
-                        <Eye className="h-3.5 w-3.5" />
-                        Preview
-                    </TabsTrigger>
-                </TabsList>
-
-                <div className="flex items-center gap-1.5">
-                    {/* ── Improve with AI button ── */}
-                    {isProUser ? (
-                        showImproveInput ? (
-                            <div className="flex items-center gap-1.5">
-                                <div className="relative flex items-center">
-                                    <Bot className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-violet-400" />
-                                    <input
-                                        autoFocus
-                                        value={improveInput}
-                                        onChange={(e) => setImproveInput(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === "Enter") handleImproveSubmit();
-                                            if (e.key === "Escape") setShowImproveInput(false);
-                                        }}
-                                        placeholder="What should I improve?"
-                                        className="h-7 w-56 rounded-md border border-violet-500/30 bg-linear-to-r from-violet-500/10 via-fuchsia-500/10 to-cyan-500/10 pl-8 pr-3 text-xs text-white/80 placeholder:text-white/30 focus:border-violet-400/50 focus:outline-none focus:shadow-[0_0_10px_rgba(139,92,246,0.2)]"
-                                    />
-                                </div>
-                                <button
-                                    onClick={handleImproveSubmit}
-                                    disabled={!improveInput.trim() || isImproving}
-                                    className="group relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-md border border-violet-500/30 bg-linear-to-br from-violet-500/20 to-fuchsia-500/20 text-violet-300 transition-all duration-200 hover:border-violet-400/50 hover:from-violet-500/30 hover:to-fuchsia-500/30 hover:shadow-[0_0_10px_rgba(139,92,246,0.3)] disabled:cursor-not-allowed disabled:opacity-40"
-                                >
-                                    {isImproving ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                        <ArrowUp className="h-3 w-3" />
-                                    )}
-                                </button>
-                            </div>
-                        ) : (
-                            <button
-                                onClick={() => setShowImproveInput(true)}
-                                disabled={isImproving || !fileData}
-                                className="group relative flex h-7 cursor-pointer items-center gap-1.5 overflow-hidden rounded-md border border-white/10 bg-linear-to-r from-violet-500/10 via-fuchsia-500/10 to-cyan-500/10 px-2.5 text-xs font-medium transition-all duration-300 hover:border-white/20 hover:from-violet-500/20 hover:via-fuchsia-500/20 hover:to-cyan-500/20 hover:shadow-[0_0_12px_rgba(139,92,246,0.3)] disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                                <span className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer_2.5s_infinite] bg-linear-to-r from-transparent via-white/10 to-transparent" />
-                                {isImproving ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
-                                ) : (
-                                    <Bot className="h-3.5 w-3.5 text-violet-400 transition-colors group-hover:text-violet-300" />
-                                )}
-                                <span className="bg-linear-to-r from-violet-300 via-fuchsia-300 to-cyan-300 bg-clip-text text-transparent">
-                                    {isImproving ? "Improving…" : "Improve with Agent"}
-                                </span>
-                                {!isImproving && (
-                                    <span className="rounded-sm bg-violet-500/30 px-1 py-0.5 text-[10px] font-semibold leading-none text-violet-300">
-                                        PRO
-                                    </span>
-                                )}
-                            </button>
-                        )
-                    ) : (
-                        <PricingModal reason="upgrade">
-                            <span className="group relative flex h-7 cursor-pointer items-center gap-1.5 overflow-hidden rounded-md border border-white/10 bg-linear-to-r from-violet-500/10 via-fuchsia-500/10 to-cyan-500/10 px-2.5 text-xs font-medium text-white/60 transition-all duration-300 hover:border-white/20 hover:from-violet-500/20 hover:via-fuchsia-500/20 hover:to-cyan-500/20 hover:text-white/90 hover:shadow-[0_0_12px_rgba(139,92,246,0.3)]">
-                                <span className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer_2.5s_infinite] bg-linear-to-r from-transparent via-white/10 to-transparent" />
-                                <Bot className="h-3.5 w-3.5 text-violet-400 transition-colors group-hover:text-violet-300" />
-                                <span className="bg-linear-to-r from-violet-300 via-fuchsia-300 to-cyan-300 bg-clip-text text-transparent">
-                                    Improve with Agent
-                                </span>
-                                <span className="rounded-sm bg-violet-500/30 px-1 py-0.5 text-[10px] font-semibold leading-none text-violet-300">
-                                    PRO
-                                </span>
-                            </span>
-                        </PricingModal>
-                    )}
-
-
-                    {/* Download ZIP Button */}
-                    <Button
-                        variant="ghost"
-                        onClick={handleExportZip}
-                        disabled={isExporting || !fileData}
-                    >
-                        {isExporting ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                            <Download className="h-3.5 w-3.5" />
-                        )}
-                        <span className="hidden md:inline ml-1">Download</span>
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={onToggleView}
-                        className="h-7 w-7 shrink-0 text-white/70 hover:bg-white/10 md:hidden"
-                    >
-                        <MessageSquare className="h-4 w-4" />
-                    </Button>
-                </div>
-            </div>
-
-
-            {/* Content area */}
-            <div className="relative flex-1 min-h-0 w-full overflow-hidden bg-[#0a0a0a] flex flex-col">
-
-                {/* Loading Overlay */}
-                {(isGenerating || isImproving) && (
-                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 bg-[#0a0a0a]/85 backdrop-blur-sm">
-                        <RingLoader color="#60a5fa" size={64} speedMultiplier={0.8} />
-                        <div className="flex flex-col items-center gap-1.5">
-                            <p className="text-sm font-medium text-white/60">
-                                {isImproving ? "Improving with Zephyre AI…" : currentStepLabel}
-                            </p>
-                            <p className="text-xs text-white/20">
-                                This usually takes 1-2 minutes
-                            </p>
-                        </div>
-                    </div>
-                )}
-
-
-                <SandpackLayout
-                    className="h-full! w-full! border-none! rounded-none! bg-transparent! flex! flex-col! min-h-0! flex-1!"
-                    style={{
-                        height: "100%",
-                        minHeight: "100%",
-                        width: "100%",
-                        border: "none",
-                        borderRadius: 0,
-                        background: "transparent",
-                    }}
-                >
-
-
-                    <TabsContent
-                        value="preview"
-                        keepMounted // Kept mounted so it won't change state when we move to code tab, it will clear the state if not kept mounted
-                        className="mt-0 h-full w-full min-h-0 overflow-hidden relative flex flex-col flex-1 [hidden]:hidden!"
-                    >
-                        <SandpackPreview
-                            style={{ height: "100%", minHeight: "100%", width: "100%" }}
-                            className="h-full! w-full! flex! flex-col! flex-1! min-h-0!"
-                            showOpenInCodeSandbox={false}
-                        />
-                    </TabsContent>
-
-
-
-
-                    <TabsContent
-                        value="code"
-                        keepMounted
-                        className="mt-0 flex h-full w-full min-h-0 overflow-hidden [hidden]:hidden!"
-                    >
-                        <SandpackFileExplorer
-                            style={{
-                                height: "100%",
-                                width: "180px",
-                                borderRight: "0.5px solid rgba(255,255,255,0.08)",
-                            }}
-                        />
-                        <SandpackCodeEditor
-                            style={{ height: "100%", flex: 1 }}
-                            className="h-full flex-1 min-w-0"
-                            showTabs
-                            showLineNumbers
-                            showInlineErrors
-                            closableTabs
-                        />
-                    </TabsContent>
-
-
-                </SandpackLayout>
-            </div>
-
-            {/* Preview error banner — uses onFixError (Gemini), not onImprove (Cline) */}
-            {previewError &&
-                !isGenerating &&
-                !isImproving &&
-                activeTab === "preview" && (
-                    <div className="absolute inset-x-0 bottom-0 z-20 border-t border-red-500/20 bg-red-950/95 p-3 backdrop-blur-md shadow-lg">
-                        <div className="flex items-center gap-2.5">
-                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-                            <div className="min-w-0 flex-1">
-                                <p className="text-xs font-semibold text-red-300">
-                                    Preview error
-                                </p>
-                                <p className="line-clamp-2 break-all text-[11px] text-red-300/80">
-                                    {previewError}
-                                </p>
-                            </div>
-                            <Button
-                                onClick={() => onFixError(previewError)}
-                                variant="destructive"
-                                size="sm"
-                                className="shrink-0 gap-1.5 h-7 text-xs font-medium bg-red-600 hover:bg-red-700 text-white border-0 shadow-sm"
-                            >
-                                <Bot className="h-3 w-3" />
-                                Fix with AI
-                            </Button>
-                        </div>
-                    </div>
-                )}
-        </Tabs>
-    );
-}
-
-
-
-
-
-
-
-
-
-
-// ---- CodePanel (outer) ────────────────────────────────────────────────────────────
-
-
 export function CodePanel({
     fileData,
     isGenerating,
@@ -617,78 +59,501 @@ export function CodePanel({
     onToggleView,
 }: CodePanelProps) {
     const [activeTab, setActiveTab] = useState<ActiveTab>("preview");
+    const [viewport, setViewport] = useState<Viewport>("desktop");
+    const [selectedFile, setSelectedFile] = useState<string>("/App.jsx");
+    const [sandboxId, setSandboxId] = useState<string | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [isStartingSandbox, setIsStartingSandbox] = useState(false);
+    const [sandboxError, setSandboxError] = useState<string | null>(null);
+    const [copied, setCopied] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
+    const [improveInput, setImproveInput] = useState("");
+    const [showImproveInput, setShowImproveInput] = useState(false);
 
-    const files = useMemo(() => {
-        const rawFiles = fileData?.files ?? PLACEHOLDER_FILES;
-        const processed: Record<string, { code: string }> = { ...rawFiles };
+    const iframeRef = useRef<HTMLIFrameElement | null>(null);
+    const files = useMemo(() => fileData?.files ?? {}, [fileData?.files]);
+    const fileList = useMemo(() => Object.keys(files), [files]);
 
-        // If /App.jsx exists, ensure /App.js re-exports it so Sandpack's default /App.js ("Hello world")
-        // does not take precedence over the generated /App.jsx.
-        if (processed["/App.jsx"]) {
-            const appJsCode = processed["/App.js"]?.code ?? "";
-            const isDefaultHello =
-                !appJsCode ||
-                appJsCode.includes("Hello world") ||
-                appJsCode.includes('import App from "./App.jsx"') ||
-                appJsCode.trim() === "";
-            if (isDefaultHello) {
-                processed["/App.js"] = {
-                    code: `import App from "./App.jsx";\nexport default App;\n`,
-                };
-            }
+    // Ensure selected file exists in file list
+    useEffect(() => {
+        if (fileList.length > 0 && !files[selectedFile]) {
+            const defaultFile =
+                files["/App.jsx"] ? "/App.jsx" :
+                files["/main.py"] ? "/main.py" :
+                files["/server.js"] ? "/server.js" :
+                fileList[0];
+            setSelectedFile(defaultFile);
         }
-        return processed;
-    }, [fileData?.files]);
+    }, [fileList, files, selectedFile]);
 
-    const dependencies = {
-        ...BASE_DEPENDENCIES,
-        ...(fileData?.dependencies ?? {}),
+    // ─── E2B Sandbox Lifecycle: Start or Sync ─────────────────────────────────────
+
+    const startSandbox = useCallback(async (data: FileData) => {
+        if (!data.files || Object.keys(data.files).length === 0) return;
+
+        setIsStartingSandbox(true);
+        setSandboxError(null);
+
+        try {
+            const res = await fetch("/api/sandbox", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "start",
+                    fileData: data,
+                }),
+            });
+
+            const result = await res.json();
+            if (!res.ok || !result.success) {
+                throw new Error(result.error || "Failed to boot cloud sandbox");
+            }
+
+            setSandboxId(result.sandboxId);
+            setPreviewUrl(result.previewUrl);
+        } catch (err: unknown) {
+            console.error("[CodePanel] Failed to start E2B Sandbox:", err);
+            const msg = err instanceof Error ? err.message : "Failed to start sandbox";
+            setSandboxError(msg);
+        } finally {
+            setIsStartingSandbox(false);
+        }
+    }, []);
+
+    const syncSandboxFiles = useCallback(async (id: string, changedFiles: Record<string, { code: string }>) => {
+        try {
+            await fetch("/api/sandbox", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "sync",
+                    sandboxId: id,
+                    changedFiles,
+                }),
+            });
+        } catch (err) {
+            console.warn("[CodePanel] Failed to sync files to sandbox:", err);
+        }
+    }, []);
+
+    // Initial boot on new files
+    const prevFileKeysRef = useRef<string>("");
+    useEffect(() => {
+        if (isGenerating || !fileData || !fileData.files || Object.keys(fileData.files).length === 0) {
+            return;
+        }
+
+        const currentKeys = Object.keys(fileData.files).sort().join("|");
+        if (!sandboxId) {
+            startSandbox(fileData);
+            prevFileKeysRef.current = currentKeys;
+        } else if (currentKeys !== prevFileKeysRef.current) {
+            // New files added, sync to existing sandbox
+            syncSandboxFiles(sandboxId, fileData.files);
+            prevFileKeysRef.current = currentKeys;
+        }
+    }, [fileData, isGenerating, sandboxId, startSandbox, syncSandboxFiles]);
+
+    // Handle manual code edits
+    const handleCodeChange = (newCode: string) => {
+        if (!fileData || !selectedFile) return;
+
+        const updatedFiles = {
+            ...files,
+            [selectedFile]: { code: newCode },
+        };
+
+        onFilePatch({
+            files: updatedFiles,
+            dependencies: fileData.dependencies ?? {},
+            title: fileData.title,
+        });
+
+        // Sync changed file to running sandbox
+        if (sandboxId) {
+            syncSandboxFiles(sandboxId, { [selectedFile]: { code: newCode } });
+        }
     };
 
-    // Key only on file path set — NOT on file contents.
-    // Content changes go through sandpack.updateFile() inside SandpackInner.
-    // This prevents Sandpack from remounting when only code changes.
-    const filePathKey = Object.keys(files).sort().join("|");
+    // Reload iframe
+    const handleRefreshIframe = () => {
+        if (iframeRef.current && previewUrl) {
+            iframeRef.current.src = previewUrl;
+        }
+    };
+
+    // Copy live shareable URL
+    const handleCopyUrl = async () => {
+        if (!previewUrl) return;
+        try {
+            await navigator.clipboard.writeText(previewUrl);
+            setCopied(true);
+            toast.success("Live URL copied to clipboard!");
+            setTimeout(() => setCopied(false), 2000);
+        } catch {
+            toast.error("Failed to copy URL");
+        }
+    };
+
+    // Export ZIP
+    const handleExportZip = async () => {
+        if (isExporting || !fileData?.files) return;
+        setIsExporting(true);
+
+        try {
+            const zip = new JSZip();
+            for (const [path, fileObj] of Object.entries(fileData.files)) {
+                const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+                zip.file(cleanPath, fileObj.code);
+            }
+
+            const blob = await zip.generateAsync({ type: "blob" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${(fileData.title || "zephyre-app").toLowerCase().replace(/\s+/g, "-")}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            toast.success("Project ZIP downloaded!");
+        } catch (err) {
+            console.error("ZIP export failed:", err);
+            toast.error("Failed to export project ZIP");
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    // Submit AI improve request
+    const handleImproveSubmit = async () => {
+        const trimmed = improveInput.trim();
+        if (!trimmed || isImproving) return;
+        setImproveInput("");
+        setShowImproveInput(false);
+        await onImprove(trimmed);
+    };
+
+    // File icon helper
+    const getFileIcon = (filename: string) => {
+        if (filename.endsWith(".jsx") || filename.endsWith(".tsx") || filename.endsWith(".js") || filename.endsWith(".ts")) {
+            return <FileCode className="h-3.5 w-3.5 text-blue-400" />;
+        }
+        if (filename.endsWith(".py")) {
+            return <FileCode className="h-3.5 w-3.5 text-amber-400" />;
+        }
+        if (filename.endsWith(".json")) {
+            return <FileJson className="h-3.5 w-3.5 text-emerald-400" />;
+        }
+        return <FileText className="h-3.5 w-3.5 text-zinc-400" />;
+    };
 
     return (
-        <div className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <SandpackProvider
-                key={filePathKey}
-                template="react"
-                theme={amethyst}
-                files={files}
-                className="h-full! w-full! flex! flex-col! flex-1! min-h-0!"
-                style={{
-                    height: "100%",
-                    width: "100%",
-                    display: "flex",
-                    flexDirection: "column",
-                    flex: 1,
-                    minHeight: 0,
-                }}
-                customSetup={{ dependencies }}
-                options={{
-                    activeFile: files["/App.jsx"] ? "/App.jsx" : "/App.js",
-                    externalResources: ["https://cdn.tailwindcss.com"],
-                    recompileMode: "delayed",
-                    recompileDelay: 500,
-                }}
+        <div className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#0d0d12] text-white">
+            <Tabs
+                value={activeTab}
+                onValueChange={(val) => setActiveTab(val as ActiveTab)}
+                className="flex h-full w-full flex-col overflow-hidden"
             >
-                <SandpackInner
-                    isGenerating={isGenerating}
-                    statusLog={statusLog}
-                    activeTab={activeTab}
-                    setActiveTab={setActiveTab}
-                    onImprove={onImprove}
-                    onFixError={onFixError}
-                    fileData={fileData}
-                    appTitle={appTitle}
-                    isImproving={isImproving}
-                    isProUser={isProUser}
-                    onFilePatch={onFilePatch}
-                    onToggleView={onToggleView}
-                />
-            </SandpackProvider>
+                {/* ── Header Toolbar ── */}
+                <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/5 bg-[#12121a] px-3 sm:px-4">
+                    <div className="flex items-center gap-2">
+                        {/* Mobile view toggle */}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onToggleView}
+                            className="h-8 gap-1.5 px-2 text-xs font-semibold text-zinc-400 hover:text-white md:hidden"
+                        >
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            Chat
+                        </Button>
+
+                        {/* View Tabs */}
+                        <TabsList className="h-8 bg-black/40 p-0.5 border border-white/5 rounded-lg">
+                            <TabsTrigger
+                                value="preview"
+                                className="h-7 gap-1.5 rounded-md px-3 text-xs font-medium data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-300"
+                            >
+                                <Eye className="h-3.5 w-3.5" />
+                                Preview
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="code"
+                                className="h-7 gap-1.5 rounded-md px-3 text-xs font-medium data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-300"
+                            >
+                                <Code2 className="h-3.5 w-3.5" />
+                                Code
+                            </TabsTrigger>
+                        </TabsList>
+
+                        {/* Responsive Viewport controls (Only in preview tab) */}
+                        {activeTab === "preview" && (
+                            <div className="hidden sm:flex items-center gap-1 ml-2 border-l border-white/10 pl-2">
+                                <button
+                                    onClick={() => setViewport("desktop")}
+                                    title="Desktop view"
+                                    className={`p-1.5 rounded-md transition-colors ${viewport === "desktop" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"}`}
+                                >
+                                    <Monitor className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                    onClick={() => setViewport("tablet")}
+                                    title="Tablet view (768px)"
+                                    className={`p-1.5 rounded-md transition-colors ${viewport === "tablet" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"}`}
+                                >
+                                    <Tablet className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                    onClick={() => setViewport("mobile")}
+                                    title="Mobile view (375px)"
+                                    className={`p-1.5 rounded-md transition-colors ${viewport === "mobile" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"}`}
+                                >
+                                    <Smartphone className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Right side action buttons */}
+                    <div className="flex items-center gap-1.5">
+                        {/* Live Shareable URL Button */}
+                        {previewUrl && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleCopyUrl}
+                                className="h-8 gap-1.5 px-2.5 text-xs font-semibold bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 hover:text-emerald-300"
+                            >
+                                {copied ? <Check className="h-3.5 w-3.5 text-emerald-300" /> : <Copy className="h-3.5 w-3.5" />}
+                                <span className="hidden sm:inline">Share URL</span>
+                            </Button>
+                        )}
+
+                        {previewUrl && (
+                            <a
+                                href={previewUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Open in new tab"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/5 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white"
+                            >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                        )}
+
+                        {/* Export to ZIP */}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleExportZip}
+                            disabled={isExporting || fileList.length === 0}
+                            className="h-8 gap-1.5 px-2.5 text-xs text-zinc-400 hover:text-white hover:bg-white/5"
+                        >
+                            {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                            <span className="hidden sm:inline">Export ZIP</span>
+                        </Button>
+                    </div>
+                </div>
+
+                {/* ── Content: Preview Tab ── */}
+                <TabsContent
+                    value="preview"
+                    className="relative flex-1 min-h-0 min-w-0 m-0 p-0 flex flex-col items-center justify-center bg-black overflow-hidden"
+                >
+                    {/* State 1: Generation in progress */}
+                    {isGenerating && (
+                        <div className="flex flex-col items-center justify-center gap-4 text-center p-6">
+                            <RingLoader color="#f97316" size={54} />
+                            <div className="max-w-xs space-y-1">
+                                <p className="text-sm font-semibold text-white">Generating Application...</p>
+                                <p className="text-xs text-zinc-500">
+                                    {statusLog[statusLog.length - 1]?.label || "Constructing virtual file tree and styling components..."}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* State 2: Booting E2B Cloud Sandbox */}
+                    {!isGenerating && isStartingSandbox && (
+                        <div className="flex flex-col items-center justify-center gap-3 text-center p-6">
+                            <Loader2 className="h-8 w-8 animate-spin text-orange-400" />
+                            <div className="max-w-xs space-y-1">
+                                <p className="text-sm font-semibold text-white">Booting E2B Cloud MicroVM...</p>
+                                <p className="text-xs text-zinc-500">
+                                    Installing dependencies and starting live server container on port 3000...
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* State 3: Empty / No Files */}
+                    {!isGenerating && !isStartingSandbox && !previewUrl && !sandboxError && (
+                        <div className="flex flex-col items-center justify-center text-center p-6 text-zinc-500">
+                            <div className="text-4xl mb-3">⚡</div>
+                            <p className="text-sm font-medium text-zinc-400">Your live application will appear here</p>
+                            <p className="text-xs text-zinc-600 mt-1 max-w-xs">
+                                Enter a prompt in the chat panel to generate your full-stack app.
+                            </p>
+                        </div>
+                    )}
+
+                    {/* State 4: Sandbox Error */}
+                    {sandboxError && (
+                        <div className="flex flex-col items-center justify-center text-center p-6 max-w-md">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-red-500/30 bg-red-500/10 text-red-400 mb-4">
+                                <AlertTriangle className="h-6 w-6" />
+                            </div>
+                            <h3 className="text-base font-bold text-white mb-1">Sandbox Execution Failed</h3>
+                            <p className="text-xs text-zinc-400 mb-4">{sandboxError}</p>
+                            <div className="flex gap-2">
+                                <Button
+                                    size="sm"
+                                    onClick={() => fileData && startSandbox(fileData)}
+                                    className="h-8 text-xs bg-orange-600 hover:bg-orange-700 text-white"
+                                >
+                                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                                    Retry Boot
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => onFixError(sandboxError)}
+                                    className="h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10"
+                                >
+                                    <Bot className="h-3.5 w-3.5 mr-1.5" />
+                                    Fix with AI
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* State 5: Active Preview Frame */}
+                    {previewUrl && !isGenerating && !isStartingSandbox && (
+                        <div
+                            className={`h-full w-full flex flex-col transition-all duration-300 ${
+                                viewport === "desktop" ? "max-w-full" :
+                                viewport === "tablet" ? "max-w-3xl border-x border-white/10 shadow-2xl" :
+                                "max-w-93.75 border-x border-white/10 shadow-2xl"
+                            }`}
+                        >
+                            {/* URL Subheader Bar */}
+                            <div className="flex h-8 shrink-0 items-center justify-between border-b border-white/5 bg-[#0e0e14] px-3 text-[11px] text-zinc-400 font-mono">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span className="truncate">{previewUrl}</span>
+                                </div>
+                                <button
+                                    onClick={handleRefreshIframe}
+                                    title="Reload preview"
+                                    className="p-1 hover:text-white transition-colors"
+                                >
+                                    <RefreshCw className="h-3 w-3" />
+                                </button>
+                            </div>
+
+                            <iframe
+                                ref={iframeRef}
+                                src={previewUrl}
+                                title={appTitle || "Zephyre Preview"}
+                                className="h-full w-full flex-1 border-0 bg-black"
+                                allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write"
+                            />
+                        </div>
+                    )}
+                </TabsContent>
+
+                {/* ── Content: Code Tab ── */}
+                <TabsContent
+                    value="code"
+                    className="flex-1 min-h-0 min-w-0 m-0 p-0 flex flex-row overflow-hidden bg-[#09090e]"
+                >
+                    {/* Left: Virtual File Tree Explorer */}
+                    <div className="w-56 shrink-0 border-r border-white/5 bg-[#0e0e14] flex flex-col overflow-y-auto">
+                        <div className="p-3 border-b border-white/5 text-[11px] font-semibold text-zinc-400 tracking-wider uppercase">
+                            Files ({fileList.length})
+                        </div>
+                        <div className="flex-1 p-2 space-y-0.5">
+                            {fileList.map((filePath) => {
+                                const isSelected = selectedFile === filePath;
+                                return (
+                                    <button
+                                        key={filePath}
+                                        onClick={() => setSelectedFile(filePath)}
+                                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-mono transition-colors text-left truncate ${
+                                            isSelected
+                                                ? "bg-orange-500/20 text-orange-300 font-medium"
+                                                : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5"
+                                        }`}
+                                    >
+                                        {getFileIcon(filePath)}
+                                        <span className="truncate">{filePath}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Right: Code Editor */}
+                    <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#07070b]">
+                        <div className="flex h-9 shrink-0 items-center justify-between border-b border-white/5 bg-[#0e0e14] px-4 text-xs font-mono text-zinc-400">
+                            <span>{selectedFile}</span>
+                            <span className="text-[10px] text-zinc-500">Auto-saves to cloud sandbox</span>
+                        </div>
+                        <div className="flex-1 relative overflow-auto p-4">
+                            <textarea
+                                value={files[selectedFile]?.code || ""}
+                                onChange={(e) => handleCodeChange(e.target.value)}
+                                spellCheck={false}
+                                className="w-full h-full resize-none bg-transparent font-mono text-xs sm:text-[13px] leading-relaxed text-zinc-200 outline-none selection:bg-orange-500/30 selection:text-orange-200"
+                                placeholder="// Select a file from the explorer on the left..."
+                            />
+                        </div>
+                    </div>
+                </TabsContent>
+            </Tabs>
+
+            {/* ── AI Improve Drawer (For Pro Users) ── */}
+            {isProUser && (
+                <div className="border-t border-white/5 bg-[#12121a] px-4 py-2.5">
+                    {showImproveInput ? (
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="text"
+                                value={improveInput}
+                                onChange={(e) => setImproveInput(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && handleImproveSubmit()}
+                                placeholder="Describe what you want AI to improve (e.g. 'Add dark mode toggle')..."
+                                className="flex-1 rounded-xl border border-white/10 bg-black/60 px-3.5 py-2 text-xs text-white placeholder-zinc-500 outline-none focus:border-orange-500/50"
+                            />
+                            <Button
+                                size="sm"
+                                onClick={handleImproveSubmit}
+                                disabled={isImproving || !improveInput.trim()}
+                                className="h-8 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-semibold text-xs px-3"
+                            >
+                                {isImproving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUp className="h-3.5 w-3.5" />}
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setShowImproveInput(false)}
+                                className="h-8 text-xs text-zinc-500 hover:text-white"
+                            >
+                                Cancel
+                            </Button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => setShowImproveInput(true)}
+                            className="flex items-center gap-2 text-xs font-medium text-orange-400 hover:text-orange-300 transition-colors cursor-pointer"
+                        >
+                            <Bot className="h-3.5 w-3.5" />
+                            Ask AI to improve this project...
+                        </button>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
