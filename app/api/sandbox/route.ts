@@ -123,8 +123,13 @@ export async function POST(req: NextRequest) {
                     hasServerJsChange = true;
                     if (codeToWrite.includes("node:sqlite")) {
                         codeToWrite = codeToWrite.replace(/['"]node:sqlite['"]/g, "'./sqlite-shim.js'");
-                        normalizedSync["server.js"] = codeToWrite;
                     }
+                    // Guarantee server.js always listens on port 3001
+                    codeToWrite = codeToWrite
+                        .replace(/const\s+PORT\s*=\s*process\.env\.PORT\s*\|\|\s*\d+/g, "const PORT = process.env.BACKEND_PORT || 3001")
+                        .replace(/const\s+PORT\s*=\s*3000\b/g, "const PORT = 3001")
+                        .replace(/app\.listen\(\s*3000\s*,/g, "app.listen(3001,");
+                    normalizedSync["server.js"] = codeToWrite;
                     normalizedSync["sqlite-shim.js"] = SQLITE_SHIM_CODE;
                 }
             }
@@ -158,7 +163,7 @@ export async function POST(req: NextRequest) {
 
             if (hasServerJsChange) {
                 sandbox.commands.run(
-                    `cd ${baseDir} && (fuser -k 3001/tcp 2>/dev/null || pkill -f 'node server.js' || true); if [ -f server.js ]; then (nohup node server.js > /tmp/backend.log 2>&1 &); fi`,
+                    `cd ${baseDir} && (fuser -k 3001/tcp 2>/dev/null || pkill -f 'node server.js' || true); if [ -f server.js ]; then (nohup env PORT=3001 BACKEND_PORT=3001 node server.js > /tmp/backend.log 2>&1 &); fi`,
                     { background: true }
                 ).catch((err) => console.warn("[E2B Sandbox Sync] Backend restart warning:", err));
             }

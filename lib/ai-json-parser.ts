@@ -86,7 +86,21 @@ export function normalizeFilePaths(
             clean = "/src/lib/" + clean.slice("/lib/".length);
         }
 
-        normalized[clean] = fileObj;
+        let code = fileObj.code;
+        // Clean up accidental LLM escape artifacts in JSX code (e.g. `\ />` or `\ >`)
+        if (clean.endsWith(".jsx") || clean.endsWith(".tsx") || clean.endsWith(".js") || clean.endsWith(".ts")) {
+            code = code.replace(/\\\s*(\/?>)/g, " $1");
+        }
+
+        // Guarantee server.js never binds to port 3000 (which belongs to Vite)
+        if (clean === "/server.js") {
+            code = code
+                .replace(/const\s+PORT\s*=\s*process\.env\.PORT\s*\|\|\s*\d+/g, "const PORT = process.env.BACKEND_PORT || 3001")
+                .replace(/const\s+PORT\s*=\s*3000\b/g, "const PORT = 3001")
+                .replace(/app\.listen\(\s*3000\s*,/g, "app.listen(3001,");
+        }
+
+        normalized[clean] = { code };
     }
 
     // Strict de-duplication: If /src/App.jsx exists, never allow a lingering /App.jsx
@@ -354,7 +368,7 @@ export default function App() {
     // Ensure package.json
     const backendDeps = hasServerJs ? { express: "^4.21.2", cors: "^2.8.5" } : {};
     const devScript = hasServerJs
-        ? "node server.js & vite --host 0.0.0.0 --port 3000"
+        ? "PORT=3001 node server.js & vite --host 0.0.0.0 --port 3000"
         : "vite --host 0.0.0.0 --port 3000";
 
     if (!updatedFiles["/package.json"]) {

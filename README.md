@@ -5,7 +5,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-22.14.0-339933?style=for-the-badge&logo=node.js)
 ![E2B Sandbox](https://img.shields.io/badge/E2B-Cloud_MicroVM_Sandbox-orange?style=for-the-badge)
 ![CodeMirror](https://img.shields.io/badge/CodeMirror-v6-black?style=for-the-badge)
-![Vitest](https://img.shields.io/badge/Vitest-54_Tests_Passing-brightgreen?style=for-the-badge)
+![Vitest](https://img.shields.io/badge/Vitest-75_Tests_Passing-brightgreen?style=for-the-badge)
 ![Prisma](https://img.shields.io/badge/Prisma-7.8.0-1B222D?style=for-the-badge&logo=prisma)
 ![TailwindCSS](https://img.shields.io/badge/Tailwind-v4-38B2AC?style=for-the-badge&logo=tailwind-css)
 ![Google Gemini](https://img.shields.io/badge/Google_Gemini-3.5_Flash-4285F4?style=for-the-badge&logo=google)
@@ -18,16 +18,23 @@ A full-stack, enterprise-grade AI Web Application & Component Builder powered by
 
 ## 🌟 What's New in Recent Updates
 
+- 🧩 **Lovable-Style Modular Multi-File Architecture:** Overhauled generation prompts and canonical file path sanitizers to decompose applications into production-grade modular components (`/src/App.jsx`, `/src/components/`, `/src/components/ui/`, `/src/hooks/`, `/src/lib/utils.js`, `/server.js`, and `/README.md`). Completely eliminated monolithic root duplication and enforced canonical `/src/` paths with auto-scaffolding of missing Vite/Tailwind configurations.
+- 📎 **Multi-Format Attachment Engine & Categorized Plus Menu:** Introduced a multi-format attachment popup (`AttachmentPlusMenu`) supporting Photos & Mockups (`image/*`), PDF Specifications (`.pdf`), Data & Schemas (`.json`, `.csv`, `.tsv`), Code & Components (`.js`, `.jsx`, `.ts`, `.tsx`, `.html`, `.css`, `.py`, `.sql`), and All Files. Enforces enterprise security guardrails (10MB per file ceiling, 5 files max, blacklist against dangerous executables and archives).
+- 🔄 **Client-Side Project Handoff (`sessionStorage`):** Engineered a zero-loss client handoff (`zephyre_pending_project`) that seamlessly transfers prompts and multimodal file attachments from the home page to the workspace, eliminating browser URL length limits (`HTTP 414 URI Too Long`).
+- 🛡️ **Resilient Multi-Stage JSON Stream Parser:** Eliminated "AI returned invalid JSON" errors via forced `responseMimeType: "application/json"`, thinking chunk isolation, control character sanitization, automatic closing of truncated JSON objects/arrays, and regex fallback file extraction.
+- 🩺 **One-Click Live Error Bridge & Floating Recovery Bar:** Real-time interception of Vite React Babel compile overlays and iframe runtime exceptions. Parses error messages, pinpoints affected lines, scans the connected dependency graph, and presents a 1-click "Fix with AI" floating recovery bar for instant automated repairs.
+- 🔍 **Explorer Code Search & VS Code-Style Iconography:** Lovable-grade file tree search with real-time substring filtering, auto-expanding folder navigation, collapse/expand all toggles, and rich VS Code-style color-coded file extension icons.
+- 🧹 **E2B MicroVM Stability & Concurrency Auto-Pruning:** Implemented automated background pruning (`pruneStaleSandboxes`) to defend against E2B's 20-container concurrency rate limits, coupled with crash-proof zero-dependency file-based persistence (`database.json` + `sqlite-shim.js`).
 - 🚀 **Full-Stack MicroVM Architecture with Crash-Proof File Database:** Enabled full-stack website generation running both frontend (React 19 on port 3000) and backend (Express on port 3001) in isolated E2B microVMs. Pre-configured Vite reverse proxy (`/api/*` ──► `http://127.0.0.1:3001`), universal zero-dependency file-based persistent storage (`./database.json` and `./sqlite-shim.js`), automatic import sanitization for Node 20 microVM runtime compatibility, and optimistic UI updates for instant perceived responsiveness.
 - 📱 **Mobile Resilience, Heartbeat Pings & Proxy Buffering Fix:** Added `"X-Accel-Buffering": "no"` to disable reverse proxy buffering on Render, coupled with 2.5-second SSE keepalive heartbeats (`: keepalive\n\n`) preventing mobile cellular carrier drops.
 - 💾 **Unconditional Server-Side Database Persistence:** Decoupled database commits from client socket lifecycles, ensuring completed AI-generated applications are always saved to PostgreSQL even if a mobile device dims or encounters network jitter. Fixed Prisma compound unique indexing (`id_userId`).
-- 📲 **Mobile View Auto-Transition:** Automatically shifts mobile view from chat to preview upon `done`, giving mobile users immediate visual confirmation of their generated full-stack web application.
+- 📲 **Mobile View Auto-Transition & Responsive Chat Polish:** Automatically shifts mobile view from chat to preview upon `done`. Polished chat layout with pure white header titles, hidden scrollbars (`no-scrollbar`) with smooth scrolling, aligned header heights, and desktop collapsible panel toggle.
 - ☁️ **E2B Cloud MicroVM Sandbox Architecture:** Replaced client-only sandboxing with isolated Firecracker microVMs powered by E2B (`@e2b/code-interpreter`), running real Node.js and full-stack Vite 6 servers with live shareable external URLs (`https://3000-*.e2b.app`).
 - 🖤 **High-Performance Pure Black CodeMirror 6 Editor:** Replaced the plain textarea with `@uiw/react-codemirror`, featuring a custom pure black theme (`#000000`), vivid neon syntax highlighting, bracket matching, auto-closing quotes/brackets, code folding, built-in search/replace (`Ctrl+F`), cursor Ln/Col stats, and auto-save sandbox sync badges.
 - ⚡ **Debounced MicroVM Sync & Vite HMR Dual-Mirroring:** 300ms debounced file synchronization with `queueMicrotask` decoupling to avoid network saturation, immediate flush on tab switch to Preview, and automatic dual-mirroring of `App.jsx` across root and `src/` so Vite HMR updates in real time. Backend edits automatically hot-reload Express without microVM reboots.
 - 🌐 **Unified Browser Omnibar Header:** Consolidated redundant controls into a single browser header toolbar with centered address pill, clipboard URL copy, instant iframe cache-busting reload (`?_t=Date.now()`), responsive viewport toggles (Desktop/Tablet/Mobile), popout window, and ZIP export via JSZip.
 - 🎨 **Responsive Hexagon Background & Multi-Device Glow:** Enhanced `HexagonBackground` with dynamic responsive sizing (`42px` mobile, `52px` tablet, `60px` desktop) using `useSyncExternalStore`, mobile touch-drag coordinate tracking, scale popping (`scale-105`), and viewport clipping (`overflow-x-clip`) preventing horizontal shift.
-- 🧪 **Enterprise Vitest Test Suite:** Added 57 comprehensive unit and integration tests across 12 test suites verifying sandbox lifecycle, language resolvers, HMR dual-mirroring, full-stack proxying, and AI parser resilience.
+- 🧪 **Enterprise Vitest Test Suite:** Expanded to 75 comprehensive unit and integration tests across 14 test suites verifying sandbox lifecycle, language resolvers, HMR dual-mirroring, full-stack proxying, multi-format file attachments, and AI parser resilience.
 - 🛡️ **Guarded Atomic Credit Ledger & Stream Abort Protection:** Switched credit deductions to conditional Prisma transactions (`credits >= CREDIT_COST`) to prevent race-condition negative balances. Added client abort detection (`isClosed`) so interrupted or cancelled generations never deduct credits or commit partial files.
 - 🔄 **Self-Healing User Provisioning:** Integrated automated `checkUser()` sync fallbacks across all project and workspace server actions, guaranteeing seamless auto-provisioning and concurrent sign-up handling without unexpected redirects.
 - 🔌 **Global Prisma Pool Hardening:** Cached Prisma Client instance on `globalThis` across all environments (including production Node runtime on Render) to prevent connection pool exhaustion during chunk evaluation.
@@ -86,7 +93,7 @@ graph TD
 | **AI Model & SDK** | Google GenAI (`@google/genai`) | `2.12.0` | Streaming code generation via Gemini 3.5 Flash |
 | **Cloud Sandbox** | E2B (`e2b`) | `^2.62.0` | Firecracker microVM cloud execution engine |
 | **Code Editor** | CodeMirror 6 (`@uiw/react-codemirror`) | `^4.25.12` | Pure black IDE editor with multi-language syntax highlighting |
-| **Testing Suite** | Vitest (`vitest`) | `^5.0.5` | Unit and integration test runner (53 tests passing) |
+| **Testing Suite** | Vitest (`vitest`) | `^5.0.5` | Unit and integration test runner (75 tests passing across 14 suites) |
 | **Database & ORM** | Prisma / Supabase | `7.8.0` / `2.110.6` | PostgreSQL relational database & client adapter |
 | **Authentication** | Clerk | `7.5.18` | User identity & route middleware security |
 | **Security Shield** | Arcjet | `1.8.0` | Bot detection, rate-limiting, prompt injection shield |
@@ -123,36 +130,41 @@ ai_website_builder_nextjs_16/
 │   ├── not-found.tsx                # Custom 404 page
 │   └── page.tsx                     # Landing page with demo preview & marquee suggestions
 ├── components/                      # Reusable UI Components
-│   ├── ChatPanel.tsx                # AI Chat interface, message list, & thought chunks
-│   ├── CodePanel.tsx                # Browser omnibar toolbar & preview frame container
+│   ├── AttachmentPlusMenu.tsx       # Categorized plus menu for Photos, Docs, Data, Code & All Files
+│   ├── ChatPanel.tsx                # AI Chat interface, thought chunks, and desktop collapse toggle
+│   ├── CodePanel.tsx                # Browser omnibar, CodeMirror 6, live error bridge & preview frame
 │   ├── Header.tsx                   # Main navigation header (non-blocking)
 │   ├── MobileHeaderMenu.tsx         # Mobile drawer menu navigation with lazy credit sync
 │   ├── ProjectCard.tsx              # Project preview card with action triggers
 │   ├── UserCreditBadge.tsx          # Asynchronous client credit badge with pricing modal
-│   ├── WorkspaceClient.tsx          # Client state wrapper for Chat & Code panels
+│   ├── WorkspaceClient.tsx          # Client state wrapper for Chat & Code panels & error recovery
 │   ├── editor/                      # CodeMirror 6 Editor Components
 │   │   ├── CodeMirrorEditor.tsx     # Pure black IDE editor with live stats & copy triggers
 │   │   └── editor-theme.ts          # Custom high-contrast syntax highlighting & language resolvers
 │   ├── theme-provider.tsx           # Dark/light theme provider wrapper
 │   └── ui/                          # Primitive UI components (Shadcn / Base UI)
 ├── lib/                             # Core Utilities & Configuration
+│   ├── ai-json-parser.ts            # Resilient JSON parser, auto-closer, sanitizer & file canonicalizer
 │   ├── arcjet.ts                    # Arcjet security rules configuration
 │   ├── checkUser.ts                 # Resilient Clerk-to-Prisma user sync & auto-provisioning
 │   ├── constants.ts                 # Application constants (e.g. credit cost rules)
 │   ├── data.ts                      # Landing page mock dataset & prompts
-│   ├── e2b.ts                       # E2B cloud sandbox microVM lifecycle & file synchronization
+│   ├── e2b.ts                       # E2B cloud sandbox lifecycle, auto-pruning & file synchronization
+│   ├── file-attachments.ts          # Multi-format attachment guardrails, blacklist & payload builders
 │   └── prisma.ts                    # Prisma Client instance with universal globalThis caching
 ├── prisma/                          # Database Modeling & Migrations
 │   └── schema.prisma                # Relational User & Workspace schema
 ├── proxy.ts                         # Custom Middleware proxy (Clerk & Arcjet guard)
 ├── render.yaml                      # Render deployment configuration blueprint
-├── tests/                           # Vitest Automated Test Suite (53 Tests)
-│   ├── ai/                          # AI parsing and prompt routing tests
+├── tests/                           # Vitest Automated Test Suite (75 Tests across 14 Suites)
+│   ├── ai/                          # AI parsing, prompt routing & file attachment tests
 │   ├── api/                         # API route health and sandbox tests
 │   ├── database/                    # Workspace schema and project action tests
 │   ├── e2b/                         # E2B cloud microVM lifecycle & scaffolding tests
 │   ├── editor/                      # CodeMirror language resolvers & HMR dual-mirror tests
 │   └── file-tree/                   # Virtual file tree hierarchy and icon tests
+├── types/                           # TypeScript Interfaces & Contract Definitions
+│   └── workspace.ts                 # Workspace, FileData, AttachedFile & LiveError types
 ├── .node-version                    # Node engine specification (22.14.0)
 └── package.json                     # Node dependencies & build scripts
 ```
@@ -241,24 +253,28 @@ Open [http://localhost:3000](http://localhost:3000) in your browser to start bui
 ## 📡 API Endpoint Reference
 
 ### 1. `POST /api/gen-ai-code`
-- **Description:** Generates new workspace components and files from user prompt.
+- **Description:** Generates new workspace components and files from user prompt and optional multi-format attachments.
 - **Workflow:**
   1. Authenticates Clerk user session & verifies available credits.
   2. Runs Arcjet threat detection & prompt injection check.
-  3. Sends request to Google Gemini 3.5 Flash.
-  4. Streams SSE event logs (`thought` chunks and code payload).
-  5. Monitors client connection state (`isClosed`) — aborts without saving or charging if client disconnects.
-  6. Validates NPM dependencies against registry.
-  7. Executes atomic transaction with conditional balance check (`credits >= CREDIT_COST`) to deduct credit and save Workspace.
-  8. Gracefully handles and categorizes upstream API exceptions (429 rate limit, 503 high demand, connection resets).
+  3. Validates attachments against security guardrails (10MB per-file cap, 5 files max, executable blacklist).
+  4. Formats multimodal payloads (images & PDFs as Gemini `inlineData`; schemas, data, & code as prompt context).
+  5. Queries Google Gemini 3.5 Flash with `responseMimeType: "application/json"`.
+  6. Streams SSE event logs (`status` thought chunks and assembled JSON code payload).
+  7. Parses and auto-repairs JSON stream via `lib/ai-json-parser.ts`, enforcing modular Lovable-style canonical file paths (`/src/App.jsx`, `/src/components/`, `/src/components/ui/`, `/src/lib/utils.js`, `/server.js`).
+  8. Monitors client connection state (`isClosed`) — aborts without saving or charging if client disconnects.
+  9. Validates NPM dependencies against `registry.npmjs.org`.
+  10. Executes atomic transaction with conditional balance check (`credits >= CREDIT_COST`) to deduct credit and save Workspace.
+  11. Gracefully handles and categorizes upstream API exceptions (429 rate limit, 503 high demand, connection resets).
 
 ### 2. `POST /api/improve`
-- **Description:** Refines, fixes bugs, or updates existing workspace code files via iterative AI prompts.
+- **Description:** Refines, fixes bugs, or updates existing workspace code files via iterative AI prompts or 1-click live error bridge.
 - **Workflow:**
   1. Validates workspace ownership, existing files, and credit balance.
-  2. Generates updated file structures with Gemini 3.5 Flash and streams diff thoughts.
-  3. Checks connection liveness before committing updates.
-  4. Deducts credit atomically with balance guard and broadcasts completed payload.
+  2. Accepts targeted error diagnostics, error stacks, and connected dependency files for instant 1-click repairs.
+  3. Generates updated file structures with Gemini 3.5 Flash and streams diff thoughts via `@cline/sdk` agent tools (`update_file`, `done_improving`).
+  4. Checks connection liveness before committing updates.
+  5. Deducts credit atomically with balance guard and broadcasts completed payload.
 
 ### 3. `GET /api/health`
 - **Description:** Lightweight health monitoring endpoint returning system status `200 OK` for uptime monitors (e.g. Render keep-alive cron jobs).

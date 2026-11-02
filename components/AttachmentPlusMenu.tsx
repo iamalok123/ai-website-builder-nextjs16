@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useRef, useState, useEffect, useCallback, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import {
     Plus,
@@ -33,7 +33,11 @@ export function AttachmentPlusMenu({
     buttonClassName,
 }: AttachmentPlusMenuProps) {
     const [isOpen, setIsOpen] = useState(false);
-    const [mounted, setMounted] = useState(false);
+    const mounted = useSyncExternalStore(
+        () => () => {},
+        () => true,
+        () => false
+    );
 
     const triggerRef = useRef<HTMLButtonElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -43,11 +47,6 @@ export function AttachmentPlusMenu({
     );
 
     const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
-
-    // Track client mount for portal
-    useEffect(() => {
-        setMounted(true);
-    }, []);
 
     // Reposition menu smoothly based on trigger position and viewport boundaries
     const updatePosition = useCallback(() => {

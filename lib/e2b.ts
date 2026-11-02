@@ -68,8 +68,8 @@ export async function createE2bSandbox(timeoutMs = E2B_SANDBOX_TIMEOUT_MS): Prom
         apiKey,
         timeoutMs,
         envs: {
-            PORT: "3000",
             HOST: "0.0.0.0",
+            BACKEND_PORT: "3001",
         },
         network: {
             allowPublicTraffic: true,
@@ -439,7 +439,12 @@ export async function writeFilesToSandbox(
     const normalizedFiles: Record<string, string> = {};
     for (const [rawPath, fileObj] of Object.entries(rawFiles)) {
         const cleanPath = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
-        normalizedFiles[cleanPath] = fileObj?.code ?? "";
+        let code = fileObj?.code ?? "";
+        if (cleanPath.endsWith(".jsx") || cleanPath.endsWith(".tsx") || cleanPath.endsWith(".js") || cleanPath.endsWith(".ts")) {
+            // Clean up accidental LLM escape artifacts in JSX code (e.g. `\ />` or `\ >`)
+            code = code.replace(/\\\s*(\/?>)/g, " $1");
+        }
+        normalizedFiles[cleanPath] = code;
     }
 
     if (stack === "react-node") {
@@ -536,7 +541,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             ? { express: "^4.21.2", cors: "^2.8.5" }
             : {};
         const devScript = hasServerJs
-            ? "node server.js & vite --host 0.0.0.0 --port 3000"
+            ? "PORT=3001 node server.js & vite --host 0.0.0.0 --port 3000"
             : "vite --host 0.0.0.0 --port 3000";
 
         let packageJson: {
@@ -610,6 +615,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             if (normalizedFiles["server.js"].includes("node:sqlite")) {
                 normalizedFiles["server.js"] = normalizedFiles["server.js"].replace(/['"]node:sqlite['"]/g, "'./sqlite-shim.js'");
             }
+            // Guarantee Express backend always listens on port 3001, never port 3000 (which belongs to Vite)
+            normalizedFiles["server.js"] = normalizedFiles["server.js"]
+                .replace(/const\s+PORT\s*=\s*process\.env\.PORT\s*\|\|\s*\d+/g, "const PORT = process.env.BACKEND_PORT || 3001")
+                .replace(/const\s+PORT\s*=\s*3000\b/g, "const PORT = 3001")
+                .replace(/app\.listen\(\s*3000\s*,/g, "app.listen(3001,");
         }
     }
 
@@ -660,12 +670,19 @@ export async function startSandboxApp(
         await sandbox.commands.run(
             `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || npm install --silent --no-audit --no-fund --force || true)`
         );
-        // Ensure port 3001 is clean and start Node/Express backend if server.js exists
+        // Ensure both ports 3000 and 3001 are clean of any stale processes
         await sandbox.commands.run(
-            `cd ${baseDir} && (fuser -k 3001/tcp 2>/dev/null || true); if [ -f server.js ]; then (nohup node server.js > /tmp/backend.log 2>&1 &); fi`
+            `cd ${baseDir} && (fuser -k 3000/tcp 2>/dev/null || true); (fuser -k 3001/tcp 2>/dev/null || true); (pkill -f 'node server.js' 2>/dev/null || true); (pkill -f 'vite' 2>/dev/null || true)`
         );
-        // Start Vite dev server in background with log redirection for diagnosis
-        await sandbox.commands.run(`cd ${baseDir} && npm run dev > /tmp/dev-server.log 2>&1`, { background: true });
+        // Start Node/Express backend strictly on port 3001 if server.js exists
+        await sandbox.commands.run(
+            `cd ${baseDir} && if [ -f server.js ]; then (nohup env PORT=3001 BACKEND_PORT=3001 node server.js > /tmp/backend.log 2>&1 &); fi`
+        );
+        // Start Vite dev server explicitly on port 3000
+        await sandbox.commands.run(
+            `cd ${baseDir} && npx vite --host 0.0.0.0 --port 3000 > /tmp/dev-server.log 2>&1`,
+            { background: true }
+        );
     }
 
     // Wait up to 20 seconds for the dev server to start responding on port 3000
