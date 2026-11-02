@@ -50,3 +50,5 @@ detail.mdx
 !README.md
 
 /lib/generated/prisma
+.agents/
+.security-audit/

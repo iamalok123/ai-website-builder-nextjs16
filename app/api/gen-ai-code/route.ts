@@ -7,6 +7,7 @@ import type { Message, FileData } from "@/types/workspace";
 import { aj } from "@/lib/arcjet";
 import { revalidatePath } from "next/cache";
 import { parseLlmJson, ensureStandardFiles } from "@/lib/ai-json-parser";
+import { isSafeExternalUrl } from "@/lib/security";
 
 
 
@@ -50,7 +51,9 @@ async function validateDependencies(
     await Promise.all(
         Object.entries(deps).map(async ([pkg, version]) => {
             try {
-                const res = await fetch(`https://registry.npmjs.org/${pkg}/latest`, {
+                // Sanitize package name to prevent URL path injection
+                const cleanPkg = encodeURIComponent(pkg.trim());
+                const res = await fetch(`https://registry.npmjs.org/${cleanPkg}/latest`, {
                     signal: AbortSignal.timeout(1500),
                 });
                 if (res.ok) valid[pkg] = version;
@@ -197,15 +200,19 @@ async function buildContents(messages: Message[], fileData: FileData | null) {
                             let mimeType = file.type || (isPdf ? "application/pdf" : "image/png");
 
                             if (!base64Data && file.url) {
-                                try {
-                                    const res = await fetch(file.url);
-                                    if (res.ok) {
-                                        const buf = await res.arrayBuffer();
-                                        base64Data = Buffer.from(buf).toString("base64");
-                                        mimeType = res.headers.get("content-type") || mimeType;
+                                if (isSafeExternalUrl(file.url)) {
+                                    try {
+                                        const res = await fetch(file.url, { signal: AbortSignal.timeout(5000) });
+                                        if (res.ok) {
+                                            const buf = await res.arrayBuffer();
+                                            base64Data = Buffer.from(buf).toString("base64");
+                                            mimeType = res.headers.get("content-type") || mimeType;
+                                        }
+                                    } catch (err) {
+                                        console.error("Failed to fetch attached binary file:", err);
                                     }
-                                } catch (err) {
-                                    console.error("Failed to fetch attached binary file:", err);
+                                } else {
+                                    console.warn("[Security SSRF Block] Blocked untrusted URL in file attachment:", file.url);
                                 }
                             }
 
@@ -231,21 +238,25 @@ async function buildContents(messages: Message[], fileData: FileData | null) {
                     }
                 } else if (msg.imageUrl) {
                     text = `[The user has attached an image. Use this URL directly in the generated app where relevant (as img src, background-image, etc.): ${msg.imageUrl}]\n\n${text}`;
-                    try {
-                        const imgRes = await fetch(msg.imageUrl);
-                        if (imgRes.ok) {
-                            const arrayBuffer = await imgRes.arrayBuffer();
-                            const base64Data = Buffer.from(arrayBuffer).toString("base64");
-                            const mimeType = imgRes.headers.get("content-type") || "image/jpeg";
-                            parts.push({
-                                inlineData: {
-                                    data: base64Data,
-                                    mimeType,
-                                },
-                            });
+                    if (isSafeExternalUrl(msg.imageUrl)) {
+                        try {
+                            const imgRes = await fetch(msg.imageUrl, { signal: AbortSignal.timeout(5000) });
+                            if (imgRes.ok) {
+                                const arrayBuffer = await imgRes.arrayBuffer();
+                                const base64Data = Buffer.from(arrayBuffer).toString("base64");
+                                const mimeType = imgRes.headers.get("content-type") || "image/jpeg";
+                                parts.push({
+                                    inlineData: {
+                                        data: base64Data,
+                                        mimeType,
+                                    },
+                                });
+                            }
+                        } catch (error) {
+                            console.error("Failed to fetch image for Gemini:", error);
                         }
-                    } catch (error) {
-                        console.error("Failed to fetch image for Gemini:", error);
+                    } else {
+                        console.warn("[Security SSRF Block] Blocked untrusted URL in msg.imageUrl:", msg.imageUrl);
                     }
                 }
 

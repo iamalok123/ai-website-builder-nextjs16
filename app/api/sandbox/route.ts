@@ -9,6 +9,7 @@ import {
     STANDARD_VITE_CONFIG,
     SQLITE_SHIM_CODE,
 } from "@/lib/e2b";
+import { sanitizeSandboxPath } from "@/lib/security";
 import type { FileData } from "@/types/workspace";
 
 export const dynamic = "force-dynamic";
@@ -139,10 +140,16 @@ export async function POST(req: NextRequest) {
 
             // Ensure parent directories exist before writing
             const dirsToCreate = new Set<string>();
-            for (const cleanPath of Object.keys(normalizedSync)) {
-                const lastSlash = cleanPath.lastIndexOf("/");
+            const safeSyncFiles: Record<string, string> = {};
+
+            for (const [cleanPath, code] of Object.entries(normalizedSync)) {
+                const safePath = sanitizeSandboxPath(cleanPath);
+                if (!safePath) continue;
+                safeSyncFiles[safePath] = code;
+
+                const lastSlash = safePath.lastIndexOf("/");
                 if (lastSlash !== -1) {
-                    dirsToCreate.add(`${baseDir}/${cleanPath.slice(0, lastSlash)}`);
+                    dirsToCreate.add(`${baseDir}/${safePath.slice(0, lastSlash)}`);
                 }
             }
 
@@ -151,8 +158,8 @@ export async function POST(req: NextRequest) {
                 await sandbox.commands.run(`mkdir -p ${dirList}`);
             }
 
-            const promises = Object.entries(normalizedSync).map(([cleanPath, code]) =>
-                sandbox.files.write(`${baseDir}/${cleanPath}`, code)
+            const promises = Object.entries(safeSyncFiles).map(([safePath, code]) =>
+                sandbox.files.write(`${baseDir}/${safePath}`, code)
             );
 
             await Promise.all(promises);

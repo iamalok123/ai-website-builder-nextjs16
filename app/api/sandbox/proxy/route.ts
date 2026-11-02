@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { isAllowedE2bProxyHost } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +18,11 @@ export async function HEAD(req: NextRequest) {
 }
 
 async function handleProxy(req: NextRequest) {
+    const { userId } = await auth();
+    if (!userId) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const targetUrl = searchParams.get("url");
     const token = searchParams.get("token") || "";
@@ -31,10 +38,12 @@ async function handleProxy(req: NextRequest) {
         return NextResponse.json({ error: "Invalid target URL format" }, { status: 400 });
     }
 
-    // Security check: Only proxy to E2B sandboxes or local dev
-    const hostname = parsedUrl.hostname.toLowerCase();
-    const isE2bHost = hostname.endsWith(".e2b.app") || hostname.endsWith(".e2b.dev") || hostname === "localhost" || hostname === "127.0.0.1";
-    if (!isE2bHost) {
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+        return NextResponse.json({ error: "Forbidden: target protocol must be HTTP or HTTPS" }, { status: 403 });
+    }
+
+    // Security check: Strictly proxy to authorized E2B sandbox hosts
+    if (!isAllowedE2bProxyHost(parsedUrl.hostname)) {
         return NextResponse.json({ error: "Forbidden: target host is not a valid E2B sandbox domain" }, { status: 403 });
     }
 

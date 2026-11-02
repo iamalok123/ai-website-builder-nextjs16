@@ -50,10 +50,32 @@ export async function getWorkspaceById(
     workspaceId: string,
     userId?: string
 ): Promise<WorkspaceData & { userId?: string }> {
+    const { userId: clerkId } = await auth();
+    if (!clerkId) redirect("/");
+
+    let effectiveUserId = userId;
+    if (!effectiveUserId) {
+        const user = await db.user.findUnique({
+            where: { clerkId },
+            select: { id: true },
+        });
+        if (!user) redirect("/");
+        effectiveUserId = user.id;
+    } else {
+        // Verify provided userId matches authenticated clerkId
+        const user = await db.user.findUnique({
+            where: { clerkId },
+            select: { id: true },
+        });
+        if (!user || user.id !== effectiveUserId) {
+            redirect("/projects");
+        }
+    }
+
     let workspace = null;
     try {
         workspace = await db.workspace.findUnique({
-            where: userId ? { id_userId: { id: workspaceId, userId } } : { id: workspaceId },
+            where: { id_userId: { id: workspaceId, userId: effectiveUserId } },
             select: {
                 id: true,
                 title: true,

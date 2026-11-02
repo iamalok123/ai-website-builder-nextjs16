@@ -1,5 +1,6 @@
 import { Sandbox } from "e2b";
 import type { FileData } from "@/types/workspace";
+import { sanitizeSandboxPath } from "./security";
 
 export const E2B_SANDBOX_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes default idle timeout
 
@@ -727,20 +728,27 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
     // Create subdirectories for nested files in a single batched command
     const dirs = new Set<string>();
-    for (const cleanPath of Object.keys(normalizedFiles)) {
-        const lastSlash = cleanPath.lastIndexOf("/");
+    const safeFiles: Record<string, string> = {};
+
+    for (const [cleanPath, code] of Object.entries(normalizedFiles)) {
+        const safePath = sanitizeSandboxPath(cleanPath);
+        if (!safePath) continue;
+        safeFiles[safePath] = code;
+
+        const lastSlash = safePath.lastIndexOf("/");
         if (lastSlash !== -1) {
-            dirs.add(`${baseDir}/${cleanPath.slice(0, lastSlash)}`);
+            dirs.add(`${baseDir}/${safePath.slice(0, lastSlash)}`);
         }
     }
+
     if (dirs.size > 0) {
         const dirList = Array.from(dirs).map((d) => `"${d}"`).join(" ");
         await sandbox.commands.run(`mkdir -p ${dirList}`);
     }
 
     // Write all normalized files exactly once (zero race conditions)
-    const writePromises = Object.entries(normalizedFiles).map(([cleanPath, code]) =>
-        sandbox.files.write(`${baseDir}/${cleanPath}`, code)
+    const writePromises = Object.entries(safeFiles).map(([safePath, code]) =>
+        sandbox.files.write(`${baseDir}/${safePath}`, code)
     );
     await Promise.all(writePromises);
 
