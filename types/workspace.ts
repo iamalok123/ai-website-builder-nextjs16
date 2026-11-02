@@ -2,14 +2,23 @@
 
 export type MessageRole = "user" | "assistant";
 
+export interface AttachedFile {
+    name: string;
+    type: string;
+    size: number;
+    url?: string;
+    content?: string;
+    base64?: string;
+}
+
 export interface Message {
     role: MessageRole;
     content: string;
     imageUrl?: string;
+    attachedFiles?: AttachedFile[];
 }
 
-
-// Files + Dependencies always travle togather in one unit
+// Files + Dependencies always travel together in one unit
 // This is what gets saved to prisma as a single Json column 
 export interface FileData {
     files: Record<string, { code: string }>;

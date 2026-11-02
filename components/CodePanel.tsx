@@ -1001,7 +1001,7 @@ export default defineConfig({
                 >
                     {/* Left: Hierarchical File Explorer */}
                     <div className="w-64 shrink-0 border-r border-white/5 bg-[#0e0e14] flex flex-col overflow-hidden">
-                        {/* Lovable-style Search code input */}
+                        {/* Search code input */}
                         <div className="p-2 border-b border-white/5">
                             <div className="relative flex items-center">
                                 <Search className="absolute left-2.5 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />

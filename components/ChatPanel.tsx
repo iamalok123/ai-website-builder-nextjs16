@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useUser } from "@clerk/nextjs";
 import {
     ArrowUp,
-    Paperclip,
     Loader2,
     X,
     Sparkles,
@@ -12,12 +11,20 @@ import {
     Square,
     ExternalLink,
     PanelLeftClose,
+    FileCode,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
 import { PricingModal } from "@/components/PricingModal";
-import type { Message, StatusStep } from "@/types/workspace";
+import type { Message, StatusStep, AttachedFile } from "@/types/workspace";
+import {
+    processFileAttachment,
+    validateAttachment,
+    formatFileSize,
+    MAX_ATTACHMENTS_PER_REQUEST,
+} from "@/lib/file-attachments";
+import { AttachmentPlusMenu } from "@/components/AttachmentPlusMenu";
 import { createClient } from "@supabase/supabase-js";
 import Image from "next/image";
 import { toast } from "sonner";
@@ -41,7 +48,7 @@ interface ChatPanelProps {
     statusLog: StatusStep[];
     credits: number;
     initialPrompt: string | null;
-    onGenerate: (prompt: string, imageUrl?: string) => Promise<void>;
+    onGenerate: (prompt: string, attachmentOrUrl?: AttachedFile[] | string) => Promise<void>;
     onStop: () => void;
     userId: string;
     workspaceId: string | null;
@@ -67,11 +74,10 @@ export function ChatPanel({
 }: ChatPanelProps) {
     const { user } = useUser();
     const scrollContainerRef = useRef<HTMLDivElement>(null);
-    const fileRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const [input, setInput] = useState("");
-    const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null);
+    const [pendingFiles, setPendingFiles] = useState<AttachedFile[]>([]);
     const [isUploading, setIsUploading] = useState(false);
 
     const hasAutoSubmittedRef = useRef(false);
@@ -97,19 +103,37 @@ export function ChatPanel({
     }, [messages, isGenerating, isImproving]);
 
     useEffect(() => {
-        if (!initialPrompt || hasAutoSubmittedRef.current || messages.length > 0)
+        if (hasAutoSubmittedRef.current || messages.length > 0)
             return;
-        hasAutoSubmittedRef.current = true;
-        onGenerate(initialPrompt);
+
+        // Check if there are pending files and prompt passed from the home screen
+        const pendingRaw = typeof window !== "undefined" ? sessionStorage.getItem("zephyre_pending_project") : null;
+        if (pendingRaw) {
+            try {
+                const pending = JSON.parse(pendingRaw);
+                sessionStorage.removeItem("zephyre_pending_project");
+                if (pending.prompt) {
+                    hasAutoSubmittedRef.current = true;
+                    onGenerate(pending.prompt, pending.attachedFiles);
+                    return;
+                }
+            } catch {}
+        }
+
+        if (initialPrompt) {
+            hasAutoSubmittedRef.current = true;
+            onGenerate(initialPrompt);
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleSubmit = async () => {
         const trimmed = input.trim();
         if (!trimmed || isGenerating || isImproving || noCredits) return;
+        const toSend = [...pendingFiles];
         setInput("");
-        setPendingImageUrl(null);
-        await onGenerate(trimmed, pendingImageUrl ?? undefined);
+        setPendingFiles([]);
+        await onGenerate(trimmed, toSend);
     };
 
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -119,50 +143,42 @@ export function ChatPanel({
         }
     };
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || !file.type.startsWith("image/")) return;
+    const handleFilesSelected = async (files: File[]) => {
+        if (!files.length) return;
 
-        // Enforce 5MB upload limit
-        const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-        if (file.size > MAX_FILE_SIZE) {
-            toast.error("Image file is too large (maximum size is 5MB)");
-            if (fileRef.current) fileRef.current.value = "";
-            return;
-        }
-
-        const supabase = getSupabaseClient();
-        if (!supabase) {
-            toast.error("Image storage is not configured. Please check Supabase credentials.");
-            if (fileRef.current) fileRef.current.value = "";
+        if (pendingFiles.length + files.length > MAX_ATTACHMENTS_PER_REQUEST) {
+            toast.error(`You can attach up to ${MAX_ATTACHMENTS_PER_REQUEST} files per prompt.`);
             return;
         }
 
         setIsUploading(true);
-        try {
-            const rawExt = file.name.split(".").pop() || "png";
-            const ext = rawExt.toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
-            // Path: userId/workspaceId/timestamp.ext
-            // workspaceId may be "new" before first generation
-            const path = `${userId}/${workspaceId ?? "new"}/${Date.now()}.${ext}`;
-            const { error } = await supabase.storage
-                .from("workspace-images")
-                .upload(path, file, { upsert: true });
+        const supabase = getSupabaseClient();
 
-            if (error) throw error;
+        for (const file of files) {
+            const check = validateAttachment(file);
+            if (!check.valid) {
+                toast.error(check.error);
+                continue;
+            }
 
-            const { data } = supabase.storage
-                .from("workspace-images")
-                .getPublicUrl(path);
-
-            setPendingImageUrl(data.publicUrl);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            toast.error(message);
-        } finally {
-            setIsUploading(false);
-            if (fileRef.current) fileRef.current.value = "";
+            try {
+                const processed = await processFileAttachment(file, {
+                    supabaseClient: supabase,
+                    userId,
+                    workspaceId: workspaceId ?? undefined,
+                });
+                setPendingFiles((prev) => [...prev, processed]);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "Failed to attach file";
+                toast.error(message);
+            }
         }
+
+        setIsUploading(false);
+    };
+
+    const removePendingFile = (idx: number) => {
+        setPendingFiles((prev) => prev.filter((_, i) => i !== idx));
     };
 
     const canSubmit = input.trim().length > 0 && !isGenerating && !isImproving && !noCredits;
@@ -239,7 +255,39 @@ export function ChatPanel({
                                     (
                                         <div className="flex items-start justify-end gap-2.5">
                                             <div className="max-w-[85%] space-y-1.5">
-                                                {msg.imageUrl && (
+                                                {msg.attachedFiles && msg.attachedFiles.length > 0 && (
+                                                    <div className="flex flex-wrap gap-2 mb-1.5 justify-end">
+                                                        {msg.attachedFiles.map((file, idx) => (
+                                                            file.base64 && (file.type.startsWith("image/") || /\.(png|jpe?g|webp|svg|gif)$/i.test(file.name)) ? (
+                                                                // eslint-disable-next-line @next/next/no-img-element
+                                                                <img
+                                                                    key={idx}
+                                                                    src={`data:${file.type};base64,${file.base64}`}
+                                                                    alt={file.name}
+                                                                    className="max-h-36 max-w-xs rounded-lg object-cover border border-white/10"
+                                                                />
+                                                            ) : file.url && file.type.startsWith("image/") ? (
+                                                                // eslint-disable-next-line @next/next/no-img-element
+                                                                <img
+                                                                    key={idx}
+                                                                    src={file.url}
+                                                                    alt={file.name}
+                                                                    className="max-h-36 max-w-xs rounded-lg object-cover border border-white/10"
+                                                                />
+                                                            ) : (
+                                                                <div
+                                                                    key={idx}
+                                                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/10 text-xs text-white/90 font-mono"
+                                                                >
+                                                                    <FileCode className="h-3.5 w-3.5 text-orange-400 shrink-0" />
+                                                                    <span className="truncate max-w-35">{file.name}</span>
+                                                                    <span className="text-[10px] text-white/40">({formatFileSize(file.size)})</span>
+                                                                </div>
+                                                            )
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {!msg.attachedFiles?.length && msg.imageUrl && (
                                                     // eslint-disable-next-line @next/next/no-img-element
                                                     <img
                                                         src={msg.imageUrl}
@@ -385,21 +433,36 @@ export function ChatPanel({
             {/* Input */}
             <div className="border-t border-white/6 p-3 sm:p-3.5 shrink-0 bg-[#0d0d0d]">
 
-                {/* Upload Image Placeholder */}
-                {pendingImageUrl && (
-                    <div className="relative mb-2 w-fit">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                            src={pendingImageUrl}
-                            alt="pending upload"
-                            className="h-16 w-16 rounded-lg object-cover"
-                        />
-                        <button
-                            onClick={() => setPendingImageUrl(null)}
-                            className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/80 text-white/60 hover:text-white"
-                        >
-                            <X className="h-2.5 w-2.5" />
-                        </button>
+                {/* Uploaded Files Preview Row */}
+                {pendingFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2.5">
+                        {pendingFiles.map((file, idx) => (
+                            <div
+                                key={idx}
+                                className="relative group flex items-center gap-1.5 p-1.5 pr-2.5 rounded-lg bg-white/8 border border-white/10 text-xs font-mono text-white/90"
+                            >
+                                {file.base64 && (file.type.startsWith("image/") || /\.(png|jpe?g|webp|svg|gif)$/i.test(file.name)) ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                        src={`data:${file.type};base64,${file.base64}`}
+                                        alt={file.name}
+                                        className="h-7 w-7 rounded object-cover"
+                                    />
+                                ) : (
+                                    <FileCode className="h-4 w-4 text-orange-400 shrink-0 ml-1" />
+                                )}
+                                <span className="max-w-30 truncate">{file.name}</span>
+                                <span className="text-[10px] text-white/40">({formatFileSize(file.size)})</span>
+                                <button
+                                    type="button"
+                                    onClick={() => removePendingFile(idx)}
+                                    className="ml-1 p-0.5 rounded text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                                    title="Remove file"
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            </div>
+                        ))}
                     </div>
                 )}
 
@@ -437,26 +500,11 @@ export function ChatPanel({
                     />
 
                     <div className="flex items-center justify-between px-2.5 pb-2.5">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => fileRef.current?.click()}
+                        <AttachmentPlusMenu
+                            onSelectFiles={handleFilesSelected}
                             disabled={isGenerating || isImproving || isUploading || noCredits}
-                            className="h-8 w-8 rounded-lg text-white/35 hover:bg-white/6 hover:text-white/70 disabled:opacity-40"
-                        >
-                            {isUploading ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <Paperclip className="h-4 w-4" />
-                            )}
-                        </Button>
-
-                        <input
-                            ref={fileRef}
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={handleFileChange}
+                            isUploading={isUploading}
+                            direction="up"
                         />
 
                         {/* Stop button — shown while generating or improving */}

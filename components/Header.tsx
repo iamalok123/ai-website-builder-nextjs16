@@ -20,18 +20,19 @@ const Header = () => {
         <header className='fixed w-full top-3 sm:top-4 inset-x-0 z-50 px-3 sm:px-6 lg:px-8 pointer-events-none'>
             <nav className='relative mx-auto flex h-14 sm:h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8 rounded-2xl border border-white/12 bg-[#08090e]/85 backdrop-blur-2xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] pointer-events-auto transition-all duration-300 hover:border-white/20'>
                 <div className="flex items-center">
-                    <Link href="/" className="flex items-center gap-2.5 sm:gap-3 group transition-transform hover:scale-[1.02]">
+                    <Link
+                        href="/"
+                        aria-label="Zephyre Home"
+                        className="flex items-center group transition-transform hover:scale-105 active:scale-95"
+                    >
                         <Image
                             src="/logo.svg"
                             alt="Zephyre"
-                            width={36}
-                            height={18}
-                            className='h-5 sm:h-6 w-auto object-contain drop-shadow-[0_0_12px_rgba(234,179,8,0.35)]'
+                            width={68}
+                            height={26}
+                            className='h-7 sm:h-8 w-auto object-contain drop-shadow-[0_0_14px_rgba(234,179,8,0.4)] group-hover:drop-shadow-[0_0_18px_rgba(234,179,8,0.6)] transition-all'
                             priority
                         />
-                        <span className="font-extrabold text-lg sm:text-xl tracking-tight text-white group-hover:text-amber-300 transition-colors">
-                            Zephyre
-                        </span>
                     </Link>
                 </div>
 

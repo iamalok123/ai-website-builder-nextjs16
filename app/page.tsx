@@ -27,6 +27,15 @@ import { Button } from "@/components/ui/button";
 import { HexagonBackground } from "@/components/animate-ui/components/backgrounds/hexagon";
 import { FAQS, PLACEHOLDERS, STEPS, SUGGESTIONS } from "@/lib/data";
 import { PRICING_PLANS } from "@/lib/constants";
+import type { AttachedFile } from "@/types/workspace";
+import {
+  validateAttachment,
+  processFileAttachment,
+  formatFileSize,
+  MAX_ATTACHMENTS_PER_REQUEST,
+} from "@/lib/file-attachments";
+import { AttachmentPlusMenu } from "@/components/AttachmentPlusMenu";
+import { toast } from "sonner";
 
 export default function Home() {
   const { isSignedIn, isLoaded, has } = useAuth();
@@ -34,6 +43,8 @@ export default function Home() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [prompt, setPrompt] = useState("");
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [isAttaching, setIsAttaching] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -54,8 +65,47 @@ export default function Home() {
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   }, [prompt]);
 
+  const handleFilesSelected = async (files: File[]) => {
+    if (!files.length) return;
+
+    if (attachedFiles.length + files.length > MAX_ATTACHMENTS_PER_REQUEST) {
+      toast.error(`You can attach up to ${MAX_ATTACHMENTS_PER_REQUEST} files.`);
+      return;
+    }
+
+    setIsAttaching(true);
+    for (const file of files) {
+      const check = validateAttachment(file);
+      if (!check.valid) {
+        toast.error(check.error);
+        continue;
+      }
+      try {
+        const processed = await processFileAttachment(file);
+        setAttachedFiles((prev) => [...prev, processed]);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to process file";
+        toast.error(msg);
+      }
+    }
+    setIsAttaching(false);
+  };
+
+  const removeAttachedFile = (idx: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   const handleSubmit = () => {
     if (!prompt.trim() || !isSignedIn) return;
+    if (attachedFiles.length > 0) {
+      sessionStorage.setItem(
+        "zephyre_pending_project",
+        JSON.stringify({
+          prompt: prompt.trim(),
+          attachedFiles,
+        })
+      );
+    }
     router.push(`/workspace?prompt=${encodeURIComponent(prompt.trim())}`);
   };
 
@@ -136,10 +186,52 @@ export default function Home() {
                   style={{ minHeight: 48, maxHeight: 180 }}
                 />
 
+                {/* Attached Files Preview Badges */}
+                {attachedFiles.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1 pb-1">
+                    {attachedFiles.map((file, idx) => (
+                      <div
+                        key={idx}
+                        className="relative group flex items-center gap-1.5 p-1.5 pr-2.5 rounded-lg bg-white/8 border border-white/10 text-xs font-mono text-white/90"
+                      >
+                        {file.base64 && (file.type.startsWith("image/") || /\.(png|jpe?g|webp|svg|gif)$/i.test(file.name)) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={`data:${file.type};base64,${file.base64}`}
+                            alt={file.name}
+                            className="h-7 w-7 rounded object-cover"
+                          />
+                        ) : (
+                          <FileCode className="h-4 w-4 text-orange-400 shrink-0 ml-1" />
+                        )}
+                        <span className="max-w-32.5 truncate">{file.name}</span>
+                        <span className="text-[10px] text-zinc-400">({formatFileSize(file.size)})</span>
+                        <button
+                          type="button"
+                          onClick={() => removeAttachedFile(idx)}
+                          className="ml-1 p-0.5 rounded text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                          title="Remove file"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between border-t border-white/10 pt-3 sm:pt-3 gap-2.5 sm:gap-0">
-                  <span className="text-[11px] sm:text-xs text-zinc-500 text-left hidden sm:inline">
-                    Press ⏎ to generate · Shift+⏎ for new line
-                  </span>
+                  <div className="flex items-center gap-2.5">
+                    <AttachmentPlusMenu
+                      onSelectFiles={handleFilesSelected}
+                      disabled={isAttaching}
+                      isUploading={isAttaching}
+                      direction="down"
+                    />
+
+                    <span className="text-[11px] sm:text-xs text-zinc-500 text-left hidden sm:inline">
+                      Press ⏎ to generate · Shift+⏎ for new line
+                    </span>
+                  </div>
 
                   {isSignedIn ? (
                     <Button

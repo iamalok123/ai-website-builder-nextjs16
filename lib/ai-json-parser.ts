@@ -255,7 +255,7 @@ export function ensureStandardFiles(
     dependencies: Record<string, string>,
     title: string
 ): { files: Record<string, { code: string }>; dependencies: Record<string, string> } {
-    let updatedFiles = normalizeFilePaths(files);
+    const updatedFiles = normalizeFilePaths(files);
     const isPython = Object.keys(updatedFiles).some((p) => p.endsWith(".py") || p.includes("requirements.txt"));
 
     if (isPython) {

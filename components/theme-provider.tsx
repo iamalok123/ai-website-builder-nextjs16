@@ -1,7 +1,21 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { ThemeProvider as NextThemesProvider } from "next-themes"
+import * as React from "react";
+import { ThemeProvider as NextThemesProvider } from "next-themes";
+
+// Suppress React 19 false-positive warning for next-themes' theme flash prevention script
+if (typeof window !== "undefined") {
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+        if (
+            typeof args[0] === "string" &&
+            args[0].includes("Encountered a script tag while rendering React component")
+        ) {
+            return;
+        }
+        originalError.apply(console, args);
+    };
+}
 
 export function ThemeProvider({
     children,
@@ -11,5 +25,5 @@ export function ThemeProvider({
         <NextThemesProvider {...props}>
             {children}
         </NextThemesProvider>
-    )
-}
+    );
+}

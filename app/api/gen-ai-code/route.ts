@@ -131,6 +131,11 @@ CRITICAL ARCHITECTURE & MODULAR FILE ORGANIZATION:
    - Never import non-existent files. All relative imports must correspond to files in "files".
    - Do not include react, react-dom, tailwindcss, express, cors, clsx, or tailwind-merge in "dependencies" — they are pre-installed.
    - When modifying existing code, return ONLY the files you created or changed.
+   - When the user attaches files:
+     * If an image is attached, treat it as a design mockup and match layout, color scheme, components, and spacing.
+     * If a PDF is attached, implement all specification requirements and views described in the document.
+     * If data files (.json, .csv) are attached, incorporate the real data into /src/data/ or the backend /server.js database.json so the app renders with user data.
+     * If code or schemas are attached, adapt and integrate them directly into the modular React/Node architecture.
    - Syntax safety: Double-check all JSX, curly braces, and template literals (className={\`my-class \${val}\`}) before outputting.`;
 
 const PYTHON_SYSTEM_PROMPT = `You are an expert Python and modern web developer specializing in FastAPI, Flask, and interactive Python web applications.
@@ -181,7 +186,50 @@ async function buildContents(messages: Message[], fileData: FileData | null) {
                 const parts: object[] = [];
                 let text = msg.content;
 
-                if (msg.imageUrl) {
+                // Process multi-format attached files (Images, PDFs, Markdown, JSON, CSV, code)
+                if (msg.attachedFiles && msg.attachedFiles.length > 0) {
+                    for (const file of msg.attachedFiles) {
+                        const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp|svg|gif)$/i.test(file.name);
+                        const isPdf = file.type === "application/pdf" || file.name.endsWith(".pdf");
+
+                        if (isImage || isPdf) {
+                            let base64Data = file.base64;
+                            let mimeType = file.type || (isPdf ? "application/pdf" : "image/png");
+
+                            if (!base64Data && file.url) {
+                                try {
+                                    const res = await fetch(file.url);
+                                    if (res.ok) {
+                                        const buf = await res.arrayBuffer();
+                                        base64Data = Buffer.from(buf).toString("base64");
+                                        mimeType = res.headers.get("content-type") || mimeType;
+                                    }
+                                } catch (err) {
+                                    console.error("Failed to fetch attached binary file:", err);
+                                }
+                            }
+
+                            if (base64Data) {
+                                parts.push({
+                                    inlineData: {
+                                        data: base64Data,
+                                        mimeType,
+                                    },
+                                });
+                            }
+
+                            if (isImage) {
+                                const urlHint = file.url ? ` (Asset URL: ${file.url})` : "";
+                                text = `[Attached Design Mockup: ${file.name}${urlHint}. Replicate the visual layout, color palette, and component structure.]\n\n` + text;
+                            } else {
+                                text = `[Attached PDF Specification: ${file.name}. Review all requirements, pages, and components outlined in this document.]\n\n` + text;
+                            }
+                        } else if (file.content) {
+                            const ext = file.name.split(".").pop() || "txt";
+                            text = `[Attached Reference File: ${file.name} (${file.type})]\n\`\`\`${ext}\n${file.content}\n\`\`\`\nUse this data, schema, or component logic directly in the generated application.\n\n` + text;
+                        }
+                    }
+                } else if (msg.imageUrl) {
                     text = `[The user has attached an image. Use this URL directly in the generated app where relevant (as img src, background-image, etc.): ${msg.imageUrl}]\n\n${text}`;
                     try {
                         const imgRes = await fetch(msg.imageUrl);

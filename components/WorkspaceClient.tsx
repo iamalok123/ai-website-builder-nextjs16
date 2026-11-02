@@ -15,6 +15,7 @@ import type {
     FileData,
     StatusStep,
     WorkspaceData,
+    AttachedFile,
 } from "@/types/workspace";
 import { updateWorkspaceFileData } from "@/actions/workspace";
 import { buildErrorFixPrompt } from "@/lib/error-fixer";
@@ -157,14 +158,19 @@ export function WorkspaceClient({
     };
 
     const handleGenerate = useCallback(
-        async (prompt: string, imageUrl?: string) => {
+        async (prompt: string, attachmentOrUrl?: AttachedFile[] | string) => {
             if (isGenerating) return;
             if (credits < MIN_CREDITS_TO_GENERATE) return;
+
+            const isArray = Array.isArray(attachmentOrUrl);
+            const attachedFiles = isArray ? attachmentOrUrl : undefined;
+            const imageUrl = typeof attachmentOrUrl === "string" ? attachmentOrUrl : undefined;
 
             const userMessage: Message = {
                 role: "user",
                 content: prompt,
                 ...(imageUrl ? { imageUrl } : {}),
+                ...(attachedFiles && attachedFiles.length > 0 ? { attachedFiles } : {}),
             };
 
             const currentMessages = messagesRef.current;
