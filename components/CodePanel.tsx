@@ -22,6 +22,7 @@ import {
     PanelLeftOpen,
     Wand2,
     X,
+    Search,
 } from "lucide-react";
 import { RingLoader } from "react-spinners";
 import JSZip from "jszip";
@@ -129,6 +130,7 @@ function FileTreeNodeItem({
     onSelectFile,
     collapsedFolders,
     onToggleFolder,
+    isSearching = false,
 }: {
     node: FileTreeNode;
     depth: number;
@@ -136,9 +138,10 @@ function FileTreeNodeItem({
     onSelectFile: (path: string) => void;
     collapsedFolders: Set<string>;
     onToggleFolder: (path: string) => void;
+    isSearching?: boolean;
 }) {
     if (node.isFolder) {
-        const isCollapsed = collapsedFolders.has(node.path);
+        const isCollapsed = isSearching ? false : collapsedFolders.has(node.path);
         return (
             <div>
                 <button
@@ -165,6 +168,7 @@ function FileTreeNodeItem({
                                 onSelectFile={onSelectFile}
                                 collapsedFolders={collapsedFolders}
                                 onToggleFolder={onToggleFolder}
+                                isSearching={isSearching}
                             />
                         ))}
                     </div>
@@ -265,9 +269,28 @@ export function CodePanel({
     }, [activeError, fileData, onFixError]);
 
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
-    const files = useMemo(() => fileData?.files ?? {}, [fileData?.files]);
+    const [searchQuery, setSearchQuery] = useState("");
+
+    // De-duplicate files: If /src/App.jsx exists, suppress any legacy root /App.jsx
+    const files = useMemo(() => {
+        const raw = fileData?.files ?? {};
+        const cleaned: Record<string, { code: string }> = {};
+        for (const [k, v] of Object.entries(raw)) {
+            if (k === "/App.jsx" && (raw["/src/App.jsx"] || raw["src/App.jsx"])) continue;
+            cleaned[k] = v;
+        }
+        return cleaned;
+    }, [fileData?.files]);
+
     const fileList = useMemo(() => Object.keys(files), [files]);
-    const fileTree = useMemo(() => buildFileTree(fileList), [fileList]);
+
+    const filteredFileList = useMemo(() => {
+        if (!searchQuery.trim()) return fileList;
+        const q = searchQuery.toLowerCase();
+        return fileList.filter((path) => path.toLowerCase().includes(q));
+    }, [fileList, searchQuery]);
+
+    const fileTree = useMemo(() => buildFileTree(filteredFileList), [filteredFileList]);
 
     // Active file resolution with fallback to entry files if selectedFile is not in file tree
     const activeFile = useMemo(() => {
@@ -978,10 +1001,32 @@ export default defineConfig({
                 >
                     {/* Left: Hierarchical File Explorer */}
                     <div className="w-64 shrink-0 border-r border-white/5 bg-[#0e0e14] flex flex-col overflow-hidden">
-                        <div className="h-9 shrink-0 px-3 border-b border-white/5 flex items-center justify-between text-[11px] font-semibold text-zinc-400 tracking-wider uppercase">
+                        {/* Lovable-style Search code input */}
+                        <div className="p-2 border-b border-white/5">
+                            <div className="relative flex items-center">
+                                <Search className="absolute left-2.5 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Search code"
+                                    className="w-full h-8 pl-8 pr-7 rounded-lg bg-black/40 border border-white/8 text-xs font-mono text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:border-orange-500/50 transition-colors"
+                                />
+                                {searchQuery && (
+                                    <button
+                                        onClick={() => setSearchQuery("")}
+                                        className="absolute right-2 p-0.5 rounded text-zinc-400 hover:text-white hover:bg-white/10"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="h-8 shrink-0 px-3 border-b border-white/5 flex items-center justify-between text-[11px] font-semibold text-zinc-400 tracking-wider uppercase">
                             <span>Explorer</span>
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-zinc-400 font-normal">
-                                {fileList.length} files
+                                {filteredFileList.length} {filteredFileList.length === 1 ? "file" : "files"}
                             </span>
                         </div>
                         <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
@@ -994,8 +1039,14 @@ export default defineConfig({
                                     onSelectFile={setSelectedFile}
                                     collapsedFolders={collapsedFolders}
                                     onToggleFolder={handleToggleFolder}
+                                    isSearching={Boolean(searchQuery.trim())}
                                 />
                             ))}
+                            {filteredFileList.length === 0 && (
+                                <div className="p-4 text-center text-xs text-zinc-500">
+                                    No files matching &quot;{searchQuery}&quot;
+                                </div>
+                            )}
                         </div>
                     </div>
 

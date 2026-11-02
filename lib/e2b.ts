@@ -443,11 +443,23 @@ export async function writeFilesToSandbox(
     }
 
     if (stack === "react-node") {
-        // App.jsx dual compatibility (root App.jsx and src/App.jsx)
-        if (normalizedFiles["App.jsx"] && !normalizedFiles["src/App.jsx"]) {
-            normalizedFiles["src/App.jsx"] = normalizedFiles["App.jsx"];
-        } else if (normalizedFiles["src/App.jsx"] && !normalizedFiles["App.jsx"]) {
-            normalizedFiles["App.jsx"] = normalizedFiles["src/App.jsx"];
+        // Strict de-duplication: Canonicalize App.jsx into src/App.jsx
+        if (normalizedFiles["App.jsx"]) {
+            if (!normalizedFiles["src/App.jsx"]) {
+                normalizedFiles["src/App.jsx"] = normalizedFiles["App.jsx"];
+            }
+            delete normalizedFiles["App.jsx"];
+        }
+
+        // Canonicalize root components/* into src/components/*
+        for (const path of Object.keys(normalizedFiles)) {
+            if (path.startsWith("components/")) {
+                const newPath = "src/" + path;
+                if (!normalizedFiles[newPath]) {
+                    normalizedFiles[newPath] = normalizedFiles[path];
+                }
+                delete normalizedFiles[path];
+            }
         }
 
         // Strictly enforce allowedHosts: true, polling, and HMR in vite.config
@@ -622,17 +634,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         sandbox.files.write(`${baseDir}/${cleanPath}`, code)
     );
     await Promise.all(writePromises);
-
-    // Cross-mirror components between root /components and /src/components so all relative imports resolve
-    if (stack === "react-node") {
-        await sandbox.commands.run(`mkdir -p ${baseDir}/components ${baseDir}/src/components`);
-        await sandbox.commands.run(
-            `if [ -d ${baseDir}/components ]; then cp -rn ${baseDir}/components/* ${baseDir}/src/components/ 2>/dev/null || true; fi`
-        );
-        await sandbox.commands.run(
-            `if [ -d ${baseDir}/src/components ]; then cp -rn ${baseDir}/src/components/* ${baseDir}/components/ 2>/dev/null || true; fi`
-        );
-    }
 
     return { stack };
 }

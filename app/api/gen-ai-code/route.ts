@@ -1,13 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-import { jsonrepair } from "jsonrepair";
 import { db } from "@/lib/prisma";
 import { CREDIT_COST_PER_GENERATION } from "@/lib/constants";
 import type { Message, FileData } from "@/types/workspace";
 import { aj } from "@/lib/arcjet";
 import { revalidatePath } from "next/cache";
-import { STANDARD_VITE_CONFIG } from "@/lib/e2b";
+import { parseLlmJson, ensureStandardFiles } from "@/lib/ai-json-parser";
 
 
 
@@ -78,50 +77,61 @@ function trimHistory(messages: Message[]): Message[] {
 
 // ─── System prompts ────────────────────────────────────────────────────────────
 
-const DEFAULT_SYSTEM_PROMPT = `You are an expert full-stack developer specializing in modern web applications with Vite, React 19, Tailwind CSS, Node/Express, and zero-dependency file-based persistence.
-Your job is to generate complete, high-performance, production-grade full-stack applications.
+const DEFAULT_SYSTEM_PROMPT = `You are an expert full-stack engineer specializing in modern, production-grade web applications built with Vite, React 19, Tailwind CSS, Express, and zero-dependency file-based persistence.
+Your job is to generate complete, high-performance, modular full-stack applications with an organized, readable file hierarchy matching modern industry standards (like Lovable and Vite conventions).
 
-CRITICAL ARCHITECTURE:
-1. Every application with interactive data, tasks, notes, user entries, or forms MUST be a true FULL-STACK application with both a frontend (/App.jsx) and backend (/server.js).
-2. Frontend entry point: /App.jsx (React 19 functional components + Tailwind CSS + Lucide React icons).
-   - OPTIMISTIC UI UPDATES: For all user actions (create, edit, delete, toggle), update the React state immediately so the UI responds instantly with 0ms delay. Synchronize with the backend asynchronously via fetch('/api/...'). If any backend call encounters an issue, maintain local state or localStorage so the user is NEVER blocked from using the application.
-3. Backend entry point: /server.js (Express.js running on port 3001 with CORS).
-   - Use Node.js built-in file persistence with fs (synchronous atomic read/write to './database.json').
-   - Initialize storage on boot: check fs.existsSync('./database.json') and create initial structure { items: [] } if missing.
-   - Helper functions: readDb() and writeDb(data).
-   - Implement clean REST API routes on /api/... (GET, POST, PUT, DELETE) with express.json().
-   - Return clean JSON arrays/objects with proper HTTP status codes (200, 201, 404, 500).
-   - Zero external C++ native module dependencies — starts in 0ms without compilation or segfaults across all Node versions.
-   - The frontend communicates with the backend via standard fetch('/api/...') calls (which Vite dev server automatically proxies to port 3001).
-4. TOKEN SAVING & HIGH-DENSITY RULES:
-   - Be concise and token-efficient. Prefer writing clean, self-contained components in /App.jsx rather than splitting into many tiny files.
-   - Keep /server.js compact and focused (<70 lines) with clean REST routes and JSON persistence.
-   - Do NOT output unnecessary boilerplate or verbose comments. Maximize functionality per token.
+CRITICAL ARCHITECTURE & MODULAR FILE ORGANIZATION:
+1. MODULAR PROJECT STRUCTURE:
+   Do NOT write monolithic single-file applications. Always decompose the application cleanly into modular files and folders:
+   - /src/App.jsx: Root application component. Orchestrates main layout, global state, active views/tabs, and integrates subcomponents.
+   - /src/components/: Dedicated feature-level components (e.g., Header.jsx, Dashboard.jsx, HabitList.jsx, HeatmapGrid.jsx, StatCard.jsx, TaskItem.jsx, EditModal.jsx).
+   - /src/components/ui/: Reusable atomic UI primitives (e.g., Button.jsx, Card.jsx, Badge.jsx, Input.jsx, Modal.jsx, Tabs.jsx).
+   - /src/hooks/: Custom React hooks for business logic, state calculations, and local persistence (e.g., useHabits.js, useLocalStorage.js, useTheme.js).
+   - /src/lib/utils.js: Reusable utility functions, including the canonical 'cn' class-merging helper using clsx and tailwind-merge, date formatters, and streak/metric calculations.
+   - /server.js: Express.js backend running on port 3001 with CORS when persistent storage or REST API is needed.
+   - /README.md: Clear project documentation explaining the application features, component architecture, and how it works.
 
-RULES:
-1. Always respond with a valid JSON object — no markdown fences, no extra text.
-2. The JSON must match this exact shape:
+2. FRONTEND CONVENTIONS:
+   - Canonical React entry point is ALWAYS /src/App.jsx (never /App.jsx).
+   - Use React 19 functional components with hooks (useState, useEffect, useMemo, useCallback).
+   - Use .jsx extensions for all React component files, and .js for utility/hook files.
+   - Use Lucide React icons (e.g. import { Check, Flame, Trophy, Plus, Trash2, Calendar } from 'lucide-react'). Verify all import names exist in lucide-react.
+   - OPTIMISTIC UI UPDATES: For all interactive actions (add, delete, update, toggle, check-in), update React state immediately for 0ms instantaneous UI feedback. Persist asynchronously to backend /api/ endpoints (or localStorage fallback) without blocking the user.
+   - Beautiful, responsive UI using Tailwind CSS: dark-mode by default (#0a0a0c, #111116 backgrounds, zinc/slate accents, smooth borders, subtle glows).
+
+3. BACKEND CONVENTIONS:
+   - When interactive data or persistence is required, provide /server.js running on port 3001 with Express and CORS.
+   - Use Node.js built-in fs module for atomic, zero-dependency persistence with './database.json'.
+   - Initialize './database.json' on startup if not present.
+   - Provide REST API endpoints on /api/... with express.json().
+   - Return clean JSON payloads with appropriate HTTP status codes (200, 201, 404, 500).
+   - The Vite dev server automatically proxies /api requests to port 3001.
+
+4. RULES:
+   - Always return a valid JSON object matching the exact schema below — no conversational preamble, no markdown fences.
+   - Schema:
 {
-  "assistantMessage": "<brief 1-2 sentence explanation of what you built>",
-  "title": "<short 2-4 word title, e.g. 'Kanban Task Board'>",
+  "assistantMessage": "<concise 1-2 sentence description of what you built>",
+  "title": "<short 2-4 word app title>",
   "files": {
-    "/App.jsx": { "code": "<full frontend component with optimistic UI>" },
-    "/server.js": { "code": "<full express backend on port 3001 with file persistence>" }
+    "/src/App.jsx": { "code": "<root component code>" },
+    "/src/components/Header.jsx": { "code": "<header component code>" },
+    "/src/components/Dashboard.jsx": { "code": "<dashboard component code>" },
+    "/src/components/ui/Button.jsx": { "code": "<button UI primitive code>" },
+    "/src/components/ui/Card.jsx": { "code": "<card UI primitive code>" },
+    "/src/hooks/useData.js": { "code": "<custom hook code>" },
+    "/src/lib/utils.js": { "code": "<cn helper and utilities>" },
+    "/server.js": { "code": "<backend server code on port 3001>" },
+    "/README.md": { "code": "<markdown documentation>" }
   },
   "dependencies": {
-    "some-package": "latest"
+    "some-extra-package": "latest"
   }
 }
-3. Use React (functional components + modern hooks). Use .jsx file extensions for all component files.
-4. Use Tailwind CSS for all styling. Do not use CSS modules or inline styles unless absolutely necessary.
-5. The frontend entry point must always be /App.jsx and must export a default component.
-6. All imports must reference files you include in "files" or packages in "dependencies".
-7. Do not include react, react-dom, tailwindcss, express, or cors in "dependencies" — they are pre-configured.
-8. When modifying existing code, ONLY include the files you have changed in the "files" object. Do not return untouched files.
-9. Keep code clean, readable, modular, and production-quality.
-10. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.
-11. CRITICAL TAILWIND FIX: If you need dynamic class names with template literals, use EXACTLY this syntax: className={\`my-class \${variable}\`}. Do NOT use regular quotes. DO NOT accidentally add extra braces or brackets at the end like \`}\`}> or \`} />. This causes fatal syntax errors.
-12. CRITICAL: Double-check all React code for syntax errors before responding. Ensure all JSX template literals (className={\`...\`}) are perfectly formatted with matching brackets and backticks.`;
+   - Never import non-existent files. All relative imports must correspond to files in "files".
+   - Do not include react, react-dom, tailwindcss, express, cors, clsx, or tailwind-merge in "dependencies" — they are pre-installed.
+   - When modifying existing code, return ONLY the files you created or changed.
+   - Syntax safety: Double-check all JSX, curly braces, and template literals (className={\`my-class \${val}\`}) before outputting.`;
 
 const PYTHON_SYSTEM_PROMPT = `You are an expert Python and modern web developer specializing in FastAPI, Flask, and interactive Python web applications.
 Your job is to generate complete, working, production-grade Python web applications based on user prompts.
@@ -211,181 +221,6 @@ async function buildContents(messages: Message[], fileData: FileData | null) {
 
 
 
-
-// ─── Robust LLM JSON Parser ────────────────────────────────────────────────
-function parseLlmJson(raw: string): {
-    assistantMessage: string;
-    title?: string;
-    files: Record<string, { code: string }>;
-    dependencies?: Record<string, string>;
-} {
-    let clean = raw.trim();
-    if (clean.startsWith("```json")) clean = clean.slice(7);
-    else if (clean.startsWith("```")) clean = clean.slice(3);
-    if (clean.endsWith("```")) clean = clean.slice(0, -3);
-    clean = clean.trim();
-
-    const firstBrace = clean.indexOf("{");
-    const lastBrace = clean.lastIndexOf("}");
-    let candidate = clean;
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
-        candidate = clean.substring(firstBrace, lastBrace + 1);
-    }
-
-    // Attempt 1: Standard JSON.parse on candidate
-    try {
-        return JSON.parse(candidate);
-    } catch {}
-
-    // Attempt 2: jsonrepair on candidate
-    try {
-        const repaired = jsonrepair(candidate);
-        return JSON.parse(repaired);
-    } catch {}
-
-    // Attempt 3: Sanitize control characters + jsonrepair
-    const sanitized = candidate.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, "");
-    try {
-        const repaired = jsonrepair(sanitized);
-        return JSON.parse(repaired);
-    } catch {}
-
-    // Attempt 4: If truncated mid-string, try auto-closing open quotes and objects
-    const autoClosedAttempts = [
-        sanitized + '"}',
-        sanitized + '"} }',
-        sanitized + '"}} }',
-        sanitized + '}}',
-        sanitized + '}}}',
-    ];
-    for (const attempt of autoClosedAttempts) {
-        try {
-            const repaired = jsonrepair(attempt);
-            const parsed = JSON.parse(repaired);
-            if (parsed && typeof parsed === "object" && parsed.files) {
-                return parsed;
-            }
-        } catch {}
-    }
-
-    // Final attempt: jsonrepair on full sanitized raw string
-    const rawSanitized = clean.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, "");
-    const finalRepaired = jsonrepair(rawSanitized);
-    return JSON.parse(finalRepaired);
-}
-
-// ─── Ensure Complete Project File Hierarchy ──────────────────────────────────
-function ensureStandardFiles(
-    files: Record<string, { code: string }>,
-    dependencies: Record<string, string>,
-    title: string
-): { files: Record<string, { code: string }>; dependencies: Record<string, string> } {
-    const updatedFiles = { ...files };
-    const isPython = Object.keys(updatedFiles).some((p) => p.endsWith(".py") || p.includes("requirements.txt"));
-
-    if (isPython) {
-        if (!updatedFiles["/requirements.txt"] && !updatedFiles["requirements.txt"]) {
-            updatedFiles["/requirements.txt"] = { code: "fastapi\nuvicorn\njinja2\n" };
-        }
-        return { files: updatedFiles, dependencies };
-    }
-
-    // Ensure root index.html
-    if (!updatedFiles["/index.html"] && !updatedFiles["index.html"]) {
-        updatedFiles["/index.html"] = {
-            code: `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${title || "Zephyre App"}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body class="bg-black text-white">
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>`
-        };
-    }
-
-    // Ensure root vite.config.js with allowedHosts: true, polling, and HMR
-    const viteKey = Object.keys(updatedFiles).find(
-        (k) => k === "/vite.config.js" || k === "vite.config.js" || k === "/vite.config.ts" || k === "vite.config.ts"
-    );
-    if (
-        !viteKey ||
-        !updatedFiles[viteKey].code.includes("allowedHosts: true") ||
-        !updatedFiles[viteKey].code.includes("usePolling")
-    ) {
-        updatedFiles["/vite.config.js"] = {
-            code: STANDARD_VITE_CONFIG,
-        };
-    }
-
-    // Ensure /src/main.jsx entry point
-    if (!updatedFiles["/src/main.jsx"] && !updatedFiles["src/main.jsx"]) {
-        updatedFiles["/src/main.jsx"] = {
-            code: `import React, { StrictMode } from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App.jsx';
-
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);`
-        };
-    }
-
-    // Bridge App.jsx into src/App.jsx and root /App.jsx
-    if (updatedFiles["/App.jsx"] && !updatedFiles["/src/App.jsx"]) {
-        updatedFiles["/src/App.jsx"] = { code: updatedFiles["/App.jsx"].code };
-    } else if (updatedFiles["/src/App.jsx"] && !updatedFiles["/App.jsx"]) {
-        updatedFiles["/App.jsx"] = { code: updatedFiles["/src/App.jsx"].code };
-    }
-
-    // Ensure package.json
-    const hasServerJs = Boolean(updatedFiles["/server.js"] || updatedFiles["server.js"]);
-    const backendDeps = hasServerJs ? { express: "^4.21.2", cors: "^2.8.5" } : {};
-    const devScript = hasServerJs
-        ? "node server.js & vite --host 0.0.0.0 --port 3000"
-        : "vite --host 0.0.0.0 --port 3000";
-
-    if (!updatedFiles["/package.json"] && !updatedFiles["package.json"]) {
-        updatedFiles["/package.json"] = {
-            code: JSON.stringify(
-                {
-                    name: "zephyre-app",
-                    version: "1.0.0",
-                    type: "module",
-                    scripts: {
-                        dev: devScript,
-                        build: "vite build",
-                        start: "node server.js",
-                    },
-                    dependencies: {
-                        react: "^19.0.0",
-                        "react-dom": "^19.0.0",
-                        "lucide-react": "^1.16.0",
-                        clsx: "^2.1.1",
-                        "tailwind-merge": "^3.0.0",
-                        ...backendDeps,
-                        ...dependencies,
-                    },
-                    devDependencies: {
-                        "@vitejs/plugin-react": "^4.3.4",
-                        vite: "^6.0.0",
-                    },
-                },
-                null,
-                2
-            ),
-        };
-    }
-
-    return { files: updatedFiles, dependencies };
-}
 
 export async function POST(req: NextRequest) {
     const { userId: clerkId } = await auth();
@@ -486,6 +321,7 @@ export async function POST(req: NextRequest) {
                         systemInstruction: getSystemPrompt(messages),
                         temperature: 0.7,
                         maxOutputTokens: 65536,
+                        responseMimeType: "application/json",
                         // Gemini emits thought chunks before the actual output.
                         thinkingConfig: {
                             includeThoughts: true,

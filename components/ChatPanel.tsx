@@ -282,8 +282,8 @@ export function ChatPanel({
                                                 {isLiveStream && !msg.content ? (
                                                     // Empty placeholder — show Zephyre thinking indicator
                                                     <div className="flex items-center gap-2">
-                                                        <Wand2 className="h-3.5 w-3.5 shrink-0 text-blue-400/60 animate-pulse" />
-                                                        <span className="text-[13px] sm:text-sm text-white/40 animate-pulse">
+                                                        <Wand2 className="h-3.5 w-3.5 shrink-0 text-white/60 animate-pulse" />
+                                                        <span className="text-[13px] sm:text-sm text-white/60 animate-pulse">
                                                             Zephyre is thinking…
                                                         </span>
                                                     </div>
@@ -292,19 +292,19 @@ export function ChatPanel({
                                                     // with a blinking cursor at the end
                                                     <div>
                                                         <div className="mb-2 flex items-center gap-1.5">
-                                                            <Wand2 className="h-3.5 w-3.5 shrink-0 text-blue-400/60" />
-                                                            <span className="text-[11px] sm:text-xs font-medium uppercase tracking-wider text-blue-400/50">
+                                                            <Wand2 className="h-3.5 w-3.5 shrink-0 text-white/60" />
+                                                            <span className="text-[11px] sm:text-xs font-medium uppercase tracking-wider text-white/60">
                                                                 Agent reasoning
                                                             </span>
                                                         </div>
-                                                        <p className="text-[13px] sm:text-sm leading-relaxed text-white/40 wrap-break-word whitespace-pre-wrap">
+                                                        <p className="text-[13px] sm:text-sm leading-relaxed text-white/60 wrap-break-word whitespace-pre-wrap">
                                                             {msg.content}
-                                                            <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-[blink_1s_ease-in-out_infinite] bg-blue-400/60 align-middle" />
+                                                            <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-[blink_1s_ease-in-out_infinite] bg-white/70 align-middle" />
                                                         </p>
                                                     </div>
                                                 ) : (
                                                     // Normal completed assistant message
-                                                    <div className="prose prose-sm prose-invert max-w-none wrap-break-word text-[14px] sm:text-[15px] leading-relaxed text-white/85 [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-blue-300/90 [&_code]:text-[13px] [&_code]:break-all [&_li]:my-1 [&_p]:my-1.5 [&_pre]:overflow-x-auto! [&_pre]:whitespace-pre-wrap! [&_ul]:my-1.5">
+                                                    <div className="prose prose-sm prose-invert max-w-none wrap-break-word text-[14px] sm:text-[15px] leading-relaxed text-white/95 [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-white [&_code]:text-[13px] [&_code]:break-all [&_li]:my-1 [&_p]:my-1.5 [&_pre]:overflow-x-auto! [&_pre]:whitespace-pre-wrap! [&_ul]:my-1.5">
                                                         <ReactMarkdown>{msg.content}</ReactMarkdown>
                                                     </div>
                                                 )}
@@ -331,7 +331,7 @@ export function ChatPanel({
                                         <div key={i} className="flex items-center gap-2.5">
                                             <div className="flex h-4 w-4 shrink-0 items-center justify-center">
                                                 {step.status === "running" ? (
-                                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400/80" />
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-white/70" />
                                                 ) : (
                                                     <svg
                                                         className="h-3.5 w-3.5 text-white/30"
@@ -432,8 +432,8 @@ export function ChatPanel({
                                         : "Ask AI to modify…"
                         }
                         rows={1}
-                        className="w-full resize-none bg-transparent px-4 pb-2.5 pt-3.5 text-sm sm:text-[15px] text-white/90 placeholder:text-white/25 focus:outline-none leading-relaxed overflow-y-auto no-scrollbar scrollbar-none [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-                        style={{ maxHeight: 180 }}
+                        className="w-full resize-none bg-transparent px-4 pb-2.5 pt-3.5 text-base sm:text-[15px] text-white placeholder:text-white/40 focus:outline-none leading-relaxed overflow-y-auto no-scrollbar scrollbar-none [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                        style={{ maxHeight: 180, scrollbarWidth: "none", msOverflowStyle: "none" }}
                     />
 
                     <div className="flex items-center justify-between px-2.5 pb-2.5">
