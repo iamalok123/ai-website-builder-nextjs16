@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 import type { FileData, StatusStep } from "@/types/workspace";
 import { CodeMirrorEditor } from "@/components/editor/CodeMirrorEditor";
 import { FolderIcon, getFileIcon } from "@/components/ui/file-icons";
-import { ErrorInfo, parseRawError, buildErrorFixPrompt } from "@/lib/error-fixer";
+import { ErrorInfo, parseRawError, buildErrorFixPrompt, formatErrorFixDisplay } from "@/lib/error-fixer";
 
 // Types
 type ActiveTab = "preview" | "code";
@@ -51,7 +51,7 @@ interface CodePanelProps {
     isGenerating: boolean;
     statusLog: StatusStep[];
     onImprove: (userRequest: string) => Promise<void>;
-    onFixError: (error: string) => Promise<void>;
+    onFixError: (error: string, displayMessage?: string) => Promise<void>;
     onFilePatch: (patches: FileData) => void;
     appTitle: string | null;
     isImproving: boolean;
@@ -259,7 +259,8 @@ export function CodePanel({
         setIsFixingError(true);
         try {
             const prompt = buildErrorFixPrompt(activeError, fileData);
-            await onFixError(prompt);
+            const display = formatErrorFixDisplay(activeError);
+            await onFixError(prompt, display);
         } catch (err) {
             console.error("[CodePanel] Fix error failed:", err);
             toast.error("Auto-fix failed. Please try again.");

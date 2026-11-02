@@ -13,6 +13,7 @@ import {
     PanelLeftClose,
     FileCode,
 } from "lucide-react";
+import { isDiagnosticPrompt, extractDiagnosticSummary } from "@/lib/error-fixer";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
@@ -295,11 +296,35 @@ export function ChatPanel({
                                                         className="max-h-40 w-full rounded-lg object-cover"
                                                     />
                                                 )}
-                                                <div className="rounded-2xl rounded-br-sm bg-white/10 px-4 py-3 sm:px-4 sm:py-3">
-                                                    <p className="text-[14px] sm:text-[15px] leading-relaxed text-white/90 wrap-break-word">
-                                                        {msg.content}
-                                                    </p>
-                                                </div>
+                                                {isDiagnosticPrompt(msg.content) ? (() => {
+                                                    const summary = extractDiagnosticSummary(msg.content);
+                                                    return (
+                                                        <div className="rounded-2xl rounded-br-sm border border-rose-500/30 bg-linear-to-r from-rose-950/40 to-[#180a0e] p-3.5 sm:p-4 text-left shadow-lg">
+                                                            <div className="flex items-center gap-2 mb-1.5">
+                                                                <span className="flex h-5 w-5 items-center justify-center rounded-md bg-rose-500/20 text-rose-400">
+                                                                    <Wand2 className="h-3 w-3" />
+                                                                </span>
+                                                                <span className="text-xs font-semibold text-rose-300">
+                                                                    {msg.displayContent || summary.title}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-[13px] font-mono text-rose-200/90 truncate">
+                                                                {summary.message}
+                                                            </p>
+                                                            <div className="mt-2 flex items-center gap-2 text-[11px] text-rose-400/70 font-mono">
+                                                                <span>📍 {summary.location}</span>
+                                                                <span>•</span>
+                                                                <span className="uppercase">{summary.category}</span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })() : (
+                                                    <div className="rounded-2xl rounded-br-sm bg-white/10 px-4 py-3 sm:px-4 sm:py-3">
+                                                        <p className="text-[14px] sm:text-[15px] leading-relaxed text-white/90 wrap-break-word">
+                                                            {msg.displayContent || msg.content}
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
                                             {user?.imageUrl ? (
                                                 // eslint-disable-next-line @next/next/no-img-element

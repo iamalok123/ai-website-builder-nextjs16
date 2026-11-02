@@ -98,6 +98,9 @@ export async function POST(req: NextRequest) {
             for (const [rawPath, fileObj] of Object.entries(filesToSync)) {
                 const cleanPath = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
                 let codeToWrite = fileObj?.code ?? "";
+                if (cleanPath.endsWith(".jsx") || cleanPath.endsWith(".tsx") || cleanPath.endsWith(".js") || cleanPath.endsWith(".ts")) {
+                    codeToWrite = codeToWrite.replace(/\\\s*(\/?>)/g, " $1");
+                }
 
                 if (cleanPath.startsWith("vite.config")) {
                     if (
@@ -163,7 +166,7 @@ export async function POST(req: NextRequest) {
 
             if (hasServerJsChange) {
                 sandbox.commands.run(
-                    `cd ${baseDir} && (fuser -k 3001/tcp 2>/dev/null || pkill -f 'node server.js' || true); if [ -f server.js ]; then (nohup env PORT=3001 BACKEND_PORT=3001 node server.js > /tmp/backend.log 2>&1 &); fi`,
+                    `cd ${baseDir} && (fuser -k 3001/tcp 2>/dev/null || true); if [ -f server.js ]; then (nohup env PORT=3001 BACKEND_PORT=3001 node server.js > /tmp/backend.log 2>&1 &); fi`,
                     { background: true }
                 ).catch((err) => console.warn("[E2B Sandbox Sync] Backend restart warning:", err));
             }

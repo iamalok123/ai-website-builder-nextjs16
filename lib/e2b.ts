@@ -191,12 +191,95 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
     }
   }
 
+  // 1. Intercept customElements.define to catch Vite's ErrorOverlay instantiation directly
+  if (window.customElements && typeof window.customElements.define === 'function') {
+    var origDefine = window.customElements.define.bind(window.customElements);
+    window.customElements.define = function(name, constructor, options) {
+      if (name === 'vite-error-overlay') {
+        class ZephyreErrorOverlay extends constructor {
+          constructor(err, links) {
+            super(err, links);
+            try {
+              if (err) {
+                var filePath = (err.loc && err.loc.file) || err.id || '';
+                var cleanPath = filePath.replace(/^\\/+/, '').replace(/^home\\/user\\/app\\//, '');
+                var fullText = [
+                  err.plugin ? ('[plugin:' + err.plugin + ']') : '',
+                  cleanPath ? (cleanPath + ':') : '',
+                  err.message,
+                  err.frame
+                ].filter(Boolean).join('\\n');
+                sendError({
+                  category: 'compile',
+                  message: (err.message || 'Compilation error').trim(),
+                  file: cleanPath,
+                  line: err.loc ? err.loc.line : undefined,
+                  column: err.loc ? err.loc.column : undefined,
+                  codeFrame: err.frame || '',
+                  stack: fullText || err.stack || err.message
+                });
+              }
+            } catch(e) {}
+          }
+          close() {
+            super.close();
+            clearError();
+          }
+        }
+        return origDefine(name, ZephyreErrorOverlay, options);
+      }
+      return origDefine(name, constructor, options);
+    };
+  }
+
+  // 2. Intercept WebSocket messages from Vite dev server to catch HMR errors instantaneously
+  if (window.WebSocket) {
+    var OrigWebSocket = window.WebSocket;
+    window.WebSocket = function(url, protocols) {
+      var ws = new OrigWebSocket(url, protocols);
+      ws.addEventListener('message', function(ev) {
+        try {
+          var data = JSON.parse(ev.data);
+          if (data.type === 'error' && data.err) {
+            var err = data.err;
+            var filePath = (err.loc && err.loc.file) || err.id || '';
+            var cleanPath = filePath.replace(/^\\/+/, '').replace(/^home\\/user\\/app\\//, '');
+            var fullText = [
+              err.plugin ? ('[plugin:' + err.plugin + ']') : '',
+              cleanPath ? (cleanPath + ':') : '',
+              err.message,
+              err.frame
+            ].filter(Boolean).join('\\n');
+            sendError({
+              category: 'compile',
+              message: (err.message || 'Build error').trim(),
+              file: cleanPath,
+              line: err.loc ? err.loc.line : undefined,
+              column: err.loc ? err.loc.column : undefined,
+              codeFrame: err.frame || '',
+              stack: fullText || err.stack || err.message
+            });
+          } else if (data.type === 'update' || data.type === 'connected') {
+            setTimeout(function() {
+              if (!document.querySelector('vite-error-overlay')) {
+                clearError();
+              }
+            }, 150);
+          }
+        } catch(e) {}
+      });
+      return ws;
+    };
+    window.WebSocket.prototype = OrigWebSocket.prototype;
+  }
+
+  // 3. Global runtime and promise rejection catchers
   window.addEventListener('error', function(e) {
     var msg = e.message || 'Script error';
     sendError({
       category: 'runtime',
       message: msg,
-      file: e.filename || '',
+      file: (e.filename || '').replace(/^home\\/user\\/app\\//, ''),
       line: e.lineno,
       column: e.colno,
       stack: e.error ? (e.error.stack || e.error.message) : msg
@@ -213,33 +296,43 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
     });
   });
 
+  // 4. Fallback DOM inspector for <vite-error-overlay> ShadowRoot
   function checkViteOverlay() {
     var overlay = document.querySelector('vite-error-overlay');
-    if (overlay) {
-      var root = overlay.shadowRoot || overlay;
-      var text = (root.textContent || '').trim();
-      if (text) {
-        var fileMatch = text.match(/(?:\\/home\\/user\\/app\\/|src\\/|\\b)([a-zA-Z0-9_\\-\\.\\/]+\\.(?:jsx?|tsx?|css|json|html|py))/i);
-        var lineMatch = text.match(/\\((\\d+):(\\d+)\\)/);
-        sendError({
-          category: 'compile',
-          message: text.split('\\n')[0] || 'Build error',
-          file: fileMatch ? fileMatch[1] : '',
-          line: lineMatch ? parseInt(lineMatch[1], 10) : undefined,
-          column: lineMatch ? parseInt(lineMatch[2], 10) : undefined,
-          codeFrame: text,
-          stack: text
-        });
-        return;
-      }
+    if (overlay && overlay.shadowRoot) {
+      var root = overlay.shadowRoot;
+      var msgEl = root.querySelector('.message-body');
+      var fileEl = root.querySelector('.file');
+      var frameEl = root.querySelector('.frame');
+      var stackEl = root.querySelector('.stack');
+      var rawText = (root.textContent || '').trim();
+      var msg = (msgEl && msgEl.textContent ? msgEl.textContent : '') || rawText.split('\\n')[0] || 'Build error';
+      var frame = frameEl ? frameEl.textContent : '';
+      var fileText = fileEl ? fileEl.textContent : '';
+      var stack = stackEl ? stackEl.textContent : rawText;
+
+      var fileMatch = fileText.match(/(?:[a-zA-Z0-9_\\-\\.\\/]+\\.(?:jsx?|tsx?|css|json|html|py))/i) ||
+                      rawText.match(/(?:[a-zA-Z0-9_\\-\\.\\/]+\\.(?:jsx?|tsx?|css|json|html|py))/i);
+      var lineMatch = fileText.match(/:(\\d+)(?::(\\d+))?/) || rawText.match(/\\((\\d+):(\\d+)\\)/);
+
+      sendError({
+        category: 'compile',
+        message: msg.trim(),
+        file: fileMatch ? fileMatch[0].replace(/^home\\/user\\/app\\//, '') : '',
+        line: lineMatch ? parseInt(lineMatch[1], 10) : undefined,
+        column: lineMatch && lineMatch[2] ? parseInt(lineMatch[2], 10) : undefined,
+        codeFrame: frame || rawText,
+        stack: stack || rawText
+      });
+      return;
     }
-    if (lastErrorKey && lastErrorKey.includes('plugin:vite')) {
+    if (lastErrorKey && lastErrorKey.includes('compile') && !document.querySelector('vite-error-overlay')) {
       clearError();
     }
   }
 
   var observer = new MutationObserver(function() {
-    checkViteOverlay();
+    setTimeout(checkViteOverlay, 30);
   });
   if (document.documentElement) {
     observer.observe(document.documentElement, { childList: true, subtree: true });
@@ -248,6 +341,9 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
       observer.observe(document.documentElement, { childList: true, subtree: true });
     });
   }
+
+  // Periodic fallback check
+  setInterval(checkViteOverlay, 400);
 })();
 </script>
 `.trim();
@@ -505,14 +601,17 @@ export async function writeFilesToSandbox(
 </html>
 `.trim();
             normalizedFiles["index.html"] = indexHtml;
-        } else if (!indexHtml.includes("zephyre-error-bridge")) {
-            if (indexHtml.includes("</head>")) {
-                indexHtml = indexHtml.replace("</head>", `${ZEPHYRE_ERROR_BRIDGE_SCRIPT}\n</head>`);
-            } else {
-                indexHtml = `${ZEPHYRE_ERROR_BRIDGE_SCRIPT}\n${indexHtml}`;
-            }
+        } else if (indexHtml.includes('id="zephyre-error-bridge"')) {
+            indexHtml = indexHtml.replace(/<script id="zephyre-error-bridge">[\s\S]*?<\/script>/, ZEPHYRE_ERROR_BRIDGE_SCRIPT);
+            normalizedFiles["index.html"] = indexHtml;
+        } else if (indexHtml.includes("</head>")) {
+            indexHtml = indexHtml.replace("</head>", `${ZEPHYRE_ERROR_BRIDGE_SCRIPT}\n</head>`);
+            normalizedFiles["index.html"] = indexHtml;
+        } else {
+            indexHtml = `${ZEPHYRE_ERROR_BRIDGE_SCRIPT}\n${indexHtml}`;
             normalizedFiles["index.html"] = indexHtml;
         }
+        delete normalizedFiles["public/index.html"];
 
         // Ensure main.jsx entry point exists and attaches HMR compilation error reporting
         const mainJsx = normalizedFiles["src/main.jsx"] || normalizedFiles["main.jsx"];
@@ -668,11 +767,12 @@ export async function startSandboxApp(
     } else {
         // Install dependencies with legacy peer deps and safe fallback
         await sandbox.commands.run(
-            `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || npm install --silent --no-audit --no-fund --force || true)`
+            `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || npm install --silent --no-audit --no-fund --force || true)`,
+            { timeoutMs: 120_000 }
         );
         // Ensure both ports 3000 and 3001 are clean of any stale processes
         await sandbox.commands.run(
-            `cd ${baseDir} && (fuser -k 3000/tcp 2>/dev/null || true); (fuser -k 3001/tcp 2>/dev/null || true); (pkill -f 'node server.js' 2>/dev/null || true); (pkill -f 'vite' 2>/dev/null || true)`
+            `cd ${baseDir} && (fuser -k 3000/tcp 2>/dev/null || true); (fuser -k 3001/tcp 2>/dev/null || true)`
         );
         // Start Node/Express backend strictly on port 3001 if server.js exists
         await sandbox.commands.run(

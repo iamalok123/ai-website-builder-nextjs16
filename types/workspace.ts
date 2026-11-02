@@ -14,6 +14,7 @@ export interface AttachedFile {
 export interface Message {
     role: MessageRole;
     content: string;
+    displayContent?: string;
     imageUrl?: string;
     attachedFiles?: AttachedFile[];
 }

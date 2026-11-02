@@ -18,7 +18,7 @@ import type {
     AttachedFile,
 } from "@/types/workspace";
 import { updateWorkspaceFileData } from "@/actions/workspace";
-import { buildErrorFixPrompt } from "@/lib/error-fixer";
+import { buildErrorFixPrompt, formatErrorFixDisplay, parseRawError } from "@/lib/error-fixer";
 
 
 
@@ -158,7 +158,11 @@ export function WorkspaceClient({
     };
 
     const handleGenerate = useCallback(
-        async (prompt: string, attachmentOrUrl?: AttachedFile[] | string) => {
+        async (
+            prompt: string,
+            attachmentOrUrl?: AttachedFile[] | string,
+            displayContent?: string
+        ) => {
             if (isGenerating) return;
             if (credits < MIN_CREDITS_TO_GENERATE) return;
 
@@ -169,6 +173,7 @@ export function WorkspaceClient({
             const userMessage: Message = {
                 role: "user",
                 content: prompt,
+                ...(displayContent ? { displayContent } : {}),
                 ...(imageUrl ? { imageUrl } : {}),
                 ...(attachedFiles && attachedFiles.length > 0 ? { attachedFiles } : {}),
             };
@@ -503,16 +508,19 @@ export function WorkspaceClient({
                         isGenerating={isGenerating}
                         statusLog={statusLog}
                         onImprove={handleImprove}
-                        onFixError={(error) =>
-                            handleGenerate(
-                                error.startsWith("🚨")
-                                    ? error
-                                    : buildErrorFixPrompt(
-                                          error,
-                                          fileDataRef.current || fileData || { files: {}, dependencies: {} }
-                                      )
-                            )
-                        }
+                        onFixError={(error, displayMessage) => {
+                            const currentFiles = fileDataRef.current || fileData || { files: {}, dependencies: {} };
+                            const isPreformatted = error.startsWith("🚨");
+                            const prompt = isPreformatted
+                                ? error
+                                : buildErrorFixPrompt(error, currentFiles);
+                            const display =
+                                displayMessage ||
+                                (isPreformatted
+                                    ? undefined
+                                    : formatErrorFixDisplay(parseRawError(error)));
+                            return handleGenerate(prompt, undefined, display);
+                        }}
                         onFilePatch={handleFilePatch}
                         appTitle={fileData?.title ?? workspace?.title ?? null}
                         isImproving={isImproving}

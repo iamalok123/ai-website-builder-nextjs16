@@ -233,3 +233,52 @@ CRITICAL FIX INSTRUCTIONS:
 
     return prompt;
 }
+
+/**
+ * Returns a human-friendly label for chat UI display when an error fix is triggered
+ */
+export function formatErrorFixDisplay(error: ErrorInfo): string {
+    const loc = error.file
+        ? `${error.file}${error.line ? `:${error.line}` : ""}`
+        : "application";
+    const cleanMsg = (error.message || "Unknown error").split("\n")[0].trim();
+    const typeLabel = error.category === "compile" ? "compile error" : "runtime error";
+    return `🔧 Fix ${typeLabel} in ${loc}: ${cleanMsg}`;
+}
+
+/**
+ * Detects if a chat message content string is an internal diagnostic error prompt
+ */
+export function isDiagnosticPrompt(content?: string): boolean {
+    if (!content) return false;
+    return (
+        content.includes("🚨 DIAGNOSTIC ERROR REPORT") ||
+        (content.includes("CRITICAL FIX INSTRUCTIONS:") && content.includes("Location:"))
+    );
+}
+
+/**
+ * Extracts human-friendly summary metadata from a raw diagnostic prompt string
+ */
+export function extractDiagnosticSummary(content: string): {
+    title: string;
+    location: string;
+    message: string;
+    category: string;
+} {
+    const locationMatch = content.match(/Location:\s*([^\n]+)/i);
+    const categoryMatch = content.match(/Category:\s*([^\n]+)/i);
+    const errorMatch = content.match(/Error Message:\s*([^\n]+)/i);
+
+    const location = locationMatch ? locationMatch[1].trim() : "Application";
+    const category = categoryMatch ? categoryMatch[1].trim() : "Runtime";
+    const message = errorMatch ? errorMatch[1].trim() : "Runtime exception detected";
+
+    return {
+        title: `One-Click Auto-Fix: ${category} in ${location}`,
+        location,
+        message,
+        category,
+    };
+}
+

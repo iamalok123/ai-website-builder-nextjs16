@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { parseRawError, getConnectedFiles, buildErrorFixPrompt } from "@/lib/error-fixer";
+import {
+    parseRawError,
+    getConnectedFiles,
+    buildErrorFixPrompt,
+    formatErrorFixDisplay,
+    isDiagnosticPrompt,
+    extractDiagnosticSummary,
+} from "@/lib/error-fixer";
 import type { FileData } from "@/types/workspace";
 
 describe("Error Recovery & Diagnostic Parser", () => {
@@ -117,5 +124,35 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);`,
         expect(prompt).toContain("--- /src/App.jsx ---");
         expect(prompt).toContain("--- /package.json ---");
         expect(prompt).toContain("CRITICAL FIX INSTRUCTIONS");
+    });
+
+    it("should format clean human-readable error fix message for chat display", () => {
+        const error = parseRawError({
+            message: "Missing semicolon. (26:6)",
+            file: "src/App.jsx",
+            line: 26,
+            category: "compile",
+        });
+
+        const display = formatErrorFixDisplay(error);
+        expect(display).toBe("🔧 Fix compile error in src/App.jsx:26: Missing semicolon. (26:6)");
+    });
+
+    it("should detect internal diagnostic prompts and extract summary correctly", () => {
+        const prompt = `🚨 DIAGNOSTIC ERROR REPORT & ONE-CLICK AUTO-FIX REQUEST
+
+Location: src/App.jsx (Line 26, Column 6)
+Category: compile
+Error Message: Missing semicolon. (26:6)
+CRITICAL FIX INSTRUCTIONS:`;
+
+        expect(isDiagnosticPrompt(prompt)).toBe(true);
+        expect(isDiagnosticPrompt("Please add a dark mode toggle")).toBe(false);
+
+        const summary = extractDiagnosticSummary(prompt);
+        expect(summary.location).toBe("src/App.jsx (Line 26, Column 6)");
+        expect(summary.category).toBe("compile");
+        expect(summary.message).toBe("Missing semicolon. (26:6)");
+        expect(summary.title).toContain("One-Click Auto-Fix");
     });
 });
