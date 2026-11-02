@@ -81,6 +81,7 @@ export function WorkspaceClient({
     const [statusLog, setStatusLog] = useState<StatusStep[]>([]);
     const [isImproving, setIsImproving] = useState(false);
     const [mobileView, setMobileView] = useState<"chat" | "preview">("chat");
+    const [isChatOpen, setIsChatOpen] = useState(true);
 
     // AbortController refs — used to cancel in-flight streams
     const generateAbortRef = useRef<AbortController | null>(null);
@@ -457,8 +458,12 @@ export function WorkspaceClient({
             {/* Workspace — Responsive layout (stacked on mobile, side-by-side on desktop) */}
             <div className="relative flex h-screen max-h-dvh w-full overflow-hidden bg-[#0a0a0a]">
                 <div 
-                    className={`absolute inset-0 z-10 flex w-full flex-col shrink-0 h-full min-h-0 overflow-hidden transition-transform duration-300 ease-in-out md:relative md:z-auto md:w-87.5 lg:w-95 md:translate-x-0 md:flex-col ${
+                    className={`absolute inset-0 z-10 flex w-full flex-col shrink-0 h-full min-h-0 overflow-hidden transition-all duration-300 ease-in-out md:relative md:z-auto md:translate-x-0 md:flex-col ${
                         mobileView === "chat" ? "translate-x-0" : "-translate-x-full"
+                    } ${
+                        isChatOpen
+                            ? "md:w-[350px] lg:w-[380px] md:opacity-100"
+                            : "md:w-0 md:opacity-0 md:pointer-events-none"
                     }`}
                 >
                     <ChatPanel
@@ -474,11 +479,12 @@ export function WorkspaceClient({
                         workspaceId={workspaceId}
                         appTitle={fileData?.title ?? workspace?.title ?? null}
                         onToggleView={toggleMobileView}
+                        onToggleCollapse={() => setIsChatOpen(false)}
                     />
                 </div>
                 
                 {/* Desktop vertical divider */}
-                <div className="hidden md:block w-px shrink-0 bg-white/6" />
+                {isChatOpen && <div className="hidden md:block w-px shrink-0 bg-white/6" />}
 
                 <div 
                     className={`absolute inset-0 z-10 flex w-full flex-col h-full min-h-0 min-w-0 flex-1 overflow-hidden transition-transform duration-300 ease-in-out md:relative md:z-auto md:flex-1 md:translate-x-0 md:flex-col ${
@@ -500,6 +506,8 @@ export function WorkspaceClient({
                         isImproving={isImproving}
                         isProUser={userPlan === "pro"}
                         onToggleView={toggleMobileView}
+                        isChatOpen={isChatOpen}
+                        onToggleChat={() => setIsChatOpen(true)}
                     />
                 </div>
             </div>

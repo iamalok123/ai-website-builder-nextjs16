@@ -24,6 +24,7 @@ import {
     FolderOpen,
     ChevronRight,
     ChevronDown,
+    PanelLeftOpen,
 } from "lucide-react";
 import { RingLoader } from "react-spinners";
 import JSZip from "jszip";
@@ -56,6 +57,8 @@ interface CodePanelProps {
     isImproving: boolean;
     isProUser: boolean;
     onToggleView: () => void;
+    isChatOpen?: boolean;
+    onToggleChat?: () => void;
 }
 
 // ─── Build Tree Structure from Flat File Paths ──────────────────────────────
@@ -230,6 +233,8 @@ export function CodePanel({
     isImproving,
     isProUser,
     onToggleView,
+    isChatOpen,
+    onToggleChat,
 }: CodePanelProps) {
     const [activeTab, setActiveTab] = useState<ActiveTab>("preview");
     const [viewport, setViewport] = useState<Viewport>("desktop");
@@ -586,6 +591,19 @@ export default defineConfig({
                 <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/5 bg-[#12121a] px-2 sm:px-4 gap-1.5 sm:gap-2">
                     {/* Left: View Tabs & Mobile Menu */}
                     <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                        {/* Desktop Chat Open Toggle */}
+                        {onToggleChat && !isChatOpen && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={onToggleChat}
+                                title="Open Chat"
+                                className="hidden md:flex h-8 w-8 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 shrink-0 transition-colors"
+                            >
+                                <PanelLeftOpen className="h-4 w-4" />
+                            </Button>
+                        )}
+
                         {/* Mobile view toggle */}
                         <Button
                             variant="ghost"

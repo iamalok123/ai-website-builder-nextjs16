@@ -11,6 +11,7 @@ import {
     Wand2,
     Square,
     ExternalLink,
+    PanelLeftClose,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -46,6 +47,7 @@ interface ChatPanelProps {
     workspaceId: string | null;
     appTitle: string | null;
     onToggleView: () => void;
+    onToggleCollapse?: () => void;
 }
 
 export function ChatPanel({
@@ -61,6 +63,7 @@ export function ChatPanel({
     workspaceId,
     appTitle,
     onToggleView,
+    onToggleCollapse,
 }: ChatPanelProps) {
     const { user } = useUser();
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -167,11 +170,11 @@ export function ChatPanel({
     return (
         <div className="flex h-full w-full shrink-0 flex-col border-b border-white/6 bg-[#0d0d0d] md:border-b-0">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-white/6 px-3.5 sm:px-4 py-3 sm:py-3.5">
+            <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/6 px-3.5 sm:px-4">
                 <h2 className="font-semibold text-white tracking-tight truncate text-sm sm:text-[15px]">
                     {appTitle || "Zephyre Project"}
                 </h2>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                     <PricingModal reason={noCredits ? "credits" : "upgrade"}>
                         <span
                             className={cn(
@@ -194,6 +197,17 @@ export function ChatPanel({
                     >
                         <ExternalLink className="h-4 w-4" />
                     </Button>
+                    {onToggleCollapse && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={onToggleCollapse}
+                            title="Collapse Chat"
+                            className="hidden md:flex h-8 w-8 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg shrink-0 transition-colors"
+                        >
+                            <PanelLeftClose className="h-4 w-4" />
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -201,7 +215,7 @@ export function ChatPanel({
             {/* Messages */}
             <div
                 ref={scrollContainerRef}
-                className="flex-1 min-h-0 overflow-y-auto px-3 py-4 overscroll-contain [-webkit-overflow-scrolling:touch] no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                className="flex-1 min-h-0 overflow-y-auto px-3 py-4 overscroll-contain [-webkit-overflow-scrolling:touch] no-scrollbar scrollbar-none [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             >
                 {messages.length === 0 && !isGenerating && (
                     <div className="flex h-full items-center justify-center">
@@ -418,7 +432,7 @@ export function ChatPanel({
                                         : "Ask AI to modify…"
                         }
                         rows={1}
-                        className="w-full resize-none bg-transparent px-4 pb-2.5 pt-3.5 text-sm sm:text-[15px] text-white/90 placeholder:text-white/25 focus:outline-none leading-relaxed overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                        className="w-full resize-none bg-transparent px-4 pb-2.5 pt-3.5 text-sm sm:text-[15px] text-white/90 placeholder:text-white/25 focus:outline-none leading-relaxed overflow-y-auto no-scrollbar scrollbar-none [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                         style={{ maxHeight: 180 }}
                     />
 
