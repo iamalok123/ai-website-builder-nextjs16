@@ -20,6 +20,8 @@ import {
     ChevronRight,
     ChevronDown,
     PanelLeftOpen,
+    Wand2,
+    X,
 } from "lucide-react";
 import { RingLoader } from "react-spinners";
 import JSZip from "jszip";
@@ -30,6 +32,7 @@ import { cn } from "@/lib/utils";
 import type { FileData, StatusStep } from "@/types/workspace";
 import { CodeMirrorEditor } from "@/components/editor/CodeMirrorEditor";
 import { FolderIcon, getFileIcon } from "@/components/ui/file-icons";
+import { ErrorInfo, parseRawError, buildErrorFixPrompt } from "@/lib/error-fixer";
 
 // Types
 type ActiveTab = "preview" | "code";
@@ -219,6 +222,47 @@ export function CodePanel({
     const [showImproveInput, setShowImproveInput] = useState(false);
     const [isIframeLoading, setIsIframeLoading] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [previewError, setPreviewError] = useState<ErrorInfo | null>(null);
+    const [showErrorDetails, setShowErrorDetails] = useState(false);
+    const [isFixingError, setIsFixingError] = useState(false);
+
+    // Listen for live compile & runtime error events posted by the preview iframe
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+            if (!event.data || typeof event.data !== "object") return;
+            if (event.data.source === "zephyre-preview-error") {
+                const parsed = parseRawError(event.data);
+                setPreviewError(parsed);
+            } else if (event.data.source === "zephyre-preview-clear") {
+                setPreviewError(null);
+                setShowErrorDetails(false);
+            }
+        };
+
+        window.addEventListener("message", handleMessage);
+        return () => window.removeEventListener("message", handleMessage);
+    }, []);
+
+    // Combine preview runtime/compile error with initial boot sandbox error
+    const activeError = useMemo(() => {
+        if (previewError) return previewError;
+        if (sandboxError) return parseRawError(sandboxError);
+        return null;
+    }, [previewError, sandboxError]);
+
+    const handleFixActiveError = useCallback(async () => {
+        if (!activeError || !fileData) return;
+        setIsFixingError(true);
+        try {
+            const prompt = buildErrorFixPrompt(activeError, fileData);
+            await onFixError(prompt);
+        } catch (err) {
+            console.error("[CodePanel] Fix error failed:", err);
+            toast.error("Auto-fix failed. Please try again.");
+        } finally {
+            setIsFixingError(false);
+        }
+    }, [activeError, fileData, onFixError]);
 
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const files = useMemo(() => fileData?.files ?? {}, [fileData?.files]);
@@ -285,9 +329,31 @@ export default defineConfig({
     }, [fileData, onFilePatch]);
 
     // ─── E2B Sandbox Lifecycle: Start or Sync ─────────────────────────────────────
+    const isStartingRef = useRef(false);
+    const sandboxIdRef = useRef<string | null>(sandboxId);
+    useEffect(() => {
+        sandboxIdRef.current = sandboxId;
+    }, [sandboxId]);
+
+    // Unmount cleanup: terminate the running sandbox immediately to prevent orphaned containers
+    useEffect(() => {
+        return () => {
+            const currentId = sandboxIdRef.current;
+            if (currentId) {
+                fetch("/api/sandbox", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "stop", sandboxId: currentId }),
+                    keepalive: true,
+                }).catch(() => {});
+            }
+        };
+    }, []);
 
     const startSandbox = useCallback(async (data: FileData, previousId?: string | null) => {
         if (!data.files || Object.keys(data.files).length === 0) return;
+        if (isStartingRef.current) return;
+        isStartingRef.current = true;
 
         setIsStartingSandbox(true);
         setSandboxError(null);
@@ -299,7 +365,7 @@ export default defineConfig({
                 body: JSON.stringify({
                     action: "start",
                     fileData: data,
-                    previousSandboxId: previousId || sandboxId || undefined,
+                    previousSandboxId: previousId || sandboxIdRef.current || undefined,
                 }),
             });
 
@@ -322,9 +388,10 @@ export default defineConfig({
             const msg = err instanceof Error ? err.message : "Failed to start sandbox";
             setSandboxError(msg);
         } finally {
+            isStartingRef.current = false;
             setIsStartingSandbox(false);
         }
-    }, [sandboxId]);
+    }, []);
 
     const syncSandboxFiles = useCallback(async (id: string, changedFiles: Record<string, { code: string }>) => {
         try {
@@ -746,10 +813,7 @@ export default defineConfig({
                         <div className="flex flex-col items-center justify-center gap-3 text-center p-6">
                             <Loader2 className="h-8 w-8 animate-spin text-orange-400" />
                             <div className="max-w-xs space-y-1">
-                                <p className="text-sm font-semibold text-white">Booting E2B Cloud MicroVM...</p>
-                                <p className="text-xs text-zinc-500">
-                                    Installing dependencies and starting live server container on port 3000...
-                                </p>
+                                <p className="text-sm font-semibold text-white">Loading...</p>
                             </div>
                         </div>
                     )}
@@ -816,6 +880,88 @@ export default defineConfig({
                                     className="h-full w-full border-0 bg-white"
                                     allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write"
                                 />
+
+                                {/* ─── Floating Horizontal Error Recovery Bar in Preview ─── */}
+                                {activeError && (
+                                    <div className="absolute bottom-3 left-3 right-3 z-30 flex flex-col rounded-xl border border-rose-500/40 bg-[#14080b]/95 backdrop-blur-md shadow-2xl p-3 transition-all animate-in fade-in slide-in-from-bottom-2 duration-200">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                                                    <AlertTriangle className="h-4 w-4" />
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-semibold text-rose-200">
+                                                            {activeError.file ? `${activeError.file}${activeError.line ? `:${activeError.line}` : ""}` : "Runtime Error"}
+                                                        </span>
+                                                        <span className="hidden sm:inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-mono bg-rose-500/20 text-rose-300">
+                                                            {activeError.category || "compile error"}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[11px] text-rose-300/80 truncate font-mono mt-0.5 max-w-lg">
+                                                        {activeError.message}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                {activeError.codeFrame && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => setShowErrorDetails((prev) => !prev)}
+                                                        className="h-7 px-2 text-[11px] text-rose-300 hover:text-white hover:bg-rose-500/20"
+                                                    >
+                                                        {showErrorDetails ? "Hide Details" : "View Details"}
+                                                    </Button>
+                                                )}
+                                                <Button
+                                                    size="sm"
+                                                    disabled={isGenerating || isImproving || isFixingError}
+                                                    onClick={handleFixActiveError}
+                                                    className="h-7.5 px-3 text-xs font-medium text-white bg-linear-to-r from-orange-500 via-rose-500 to-amber-500 hover:opacity-90 shadow-md shadow-rose-950/50 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
+                                                >
+                                                    {isGenerating || isImproving || isFixingError ? (
+                                                        <>
+                                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                            <span>Fixing…</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Wand2 className="h-3.5 w-3.5" />
+                                                            <span>Fix now</span>
+                                                        </>
+                                                    )}
+                                                </Button>
+                                                <button
+                                                    onClick={() => {
+                                                        setPreviewError(null);
+                                                        setSandboxError(null);
+                                                    }}
+                                                    className="p-1 rounded-md text-rose-400/80 hover:text-white hover:bg-rose-500/20 transition-colors cursor-pointer"
+                                                    title="Dismiss"
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Collapsible Error Code Frame & Stack Trace Details */}
+                                        {showErrorDetails && (
+                                            <div className="mt-2.5 pt-2.5 border-t border-rose-500/20 text-xs font-mono">
+                                                {activeError.codeFrame ? (
+                                                    <pre className="p-2.5 rounded bg-black/70 text-rose-200 overflow-x-auto text-[11px] leading-relaxed max-h-36 no-scrollbar">
+                                                        {activeError.codeFrame}
+                                                    </pre>
+                                                ) : activeError.stack ? (
+                                                    <pre className="p-2.5 rounded bg-black/70 text-rose-300/80 overflow-x-auto text-[11px] leading-relaxed max-h-36 no-scrollbar">
+                                                        {activeError.stack}
+                                                    </pre>
+                                                ) : null}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -854,14 +1000,97 @@ export default defineConfig({
                     </div>
 
                     {/* Right: Code Editor powered by CodeMirror 6 */}
-                    <CodeMirrorEditor
-                        value={selectedCode}
-                        filePath={activeFile}
-                        onChange={handleCodeChange}
-                        readOnly={isGenerating}
-                        isSyncing={isSyncing}
-                        getFileIcon={getFileIcon}
-                    />
+                    <div className="relative flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+                        <CodeMirrorEditor
+                            value={selectedCode}
+                            filePath={activeFile}
+                            onChange={handleCodeChange}
+                            readOnly={isGenerating}
+                            isSyncing={isSyncing}
+                            getFileIcon={getFileIcon}
+                        />
+
+                        {/* Floating Horizontal Error Recovery Bar in Code Editor */}
+                        {activeError && (
+                            <div className="absolute bottom-3 left-3 right-3 z-30 flex flex-col rounded-xl border border-rose-500/40 bg-[#14080b]/95 backdrop-blur-md shadow-2xl p-3 transition-all animate-in fade-in slide-in-from-bottom-2 duration-200">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                                            <AlertTriangle className="h-4 w-4" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-semibold text-rose-200">
+                                                    {activeError.file ? `${activeError.file}${activeError.line ? `:${activeError.line}` : ""}` : "Syntax Error"}
+                                                </span>
+                                                <span className="hidden sm:inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-mono bg-rose-500/20 text-rose-300">
+                                                    {activeError.category || "compile error"}
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-rose-300/80 truncate font-mono mt-0.5 max-w-lg">
+                                                {activeError.message}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        {activeError.codeFrame && (
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => setShowErrorDetails((prev) => !prev)}
+                                                className="h-7 px-2 text-[11px] text-rose-300 hover:text-white hover:bg-rose-500/20"
+                                            >
+                                                {showErrorDetails ? "Hide Details" : "View Details"}
+                                            </Button>
+                                        )}
+                                        <Button
+                                            size="sm"
+                                            disabled={isGenerating || isImproving || isFixingError}
+                                            onClick={handleFixActiveError}
+                                            className="h-7.5 px-3 text-xs font-medium text-white bg-linear-to-r from-orange-500 via-rose-500 to-amber-500 hover:opacity-90 shadow-md shadow-rose-950/50 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
+                                        >
+                                            {isGenerating || isImproving || isFixingError ? (
+                                                <>
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                    <span>Fixing…</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Wand2 className="h-3.5 w-3.5" />
+                                                    <span>Fix now</span>
+                                                </>
+                                            )}
+                                        </Button>
+                                        <button
+                                            onClick={() => {
+                                                setPreviewError(null);
+                                                setSandboxError(null);
+                                            }}
+                                            className="p-1 rounded-md text-rose-400/80 hover:text-white hover:bg-rose-500/20 transition-colors cursor-pointer"
+                                            title="Dismiss"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {showErrorDetails && (
+                                    <div className="mt-2.5 pt-2.5 border-t border-rose-500/20 text-xs font-mono">
+                                        {activeError.codeFrame ? (
+                                            <pre className="p-2.5 rounded bg-black/70 text-rose-200 overflow-x-auto text-[11px] leading-relaxed max-h-36 no-scrollbar">
+                                                {activeError.codeFrame}
+                                            </pre>
+                                        ) : activeError.stack ? (
+                                            <pre className="p-2.5 rounded bg-black/70 text-rose-300/80 overflow-x-auto text-[11px] leading-relaxed max-h-36 no-scrollbar">
+                                                {activeError.stack}
+                                            </pre>
+                                        ) : null}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </TabsContent>
             </Tabs>
 

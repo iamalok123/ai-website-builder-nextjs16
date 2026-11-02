@@ -18,11 +18,53 @@ export function getE2bApiKey(): string {
 }
 
 /**
- * Creates an isolated E2B cloud sandbox instance with public web traffic enabled
+ * Proactively kills oldest running sandboxes to stay comfortably under concurrent limits
+ */
+export async function pruneStaleSandboxes(keepCount = 10): Promise<number> {
+    try {
+        const apiKey = getE2bApiKey();
+        const paginator = Sandbox.list({ apiKey });
+        const items = await paginator.nextItems();
+        if (!items || items.length <= keepCount) {
+            return 0;
+        }
+
+        // Sort by startedAt ascending (oldest first)
+        const sorted = [...items].sort((a, b) => {
+            const timeA = a.startedAt ? new Date(a.startedAt).getTime() : 0;
+            const timeB = b.startedAt ? new Date(b.startedAt).getTime() : 0;
+            return timeA - timeB;
+        });
+
+        const toPruneCount = items.length - keepCount;
+        const toPrune = sorted.slice(0, toPruneCount);
+
+        let pruned = 0;
+        await Promise.all(
+            toPrune.map(async (s) => {
+                try {
+                    await Sandbox.kill(s.sandboxId, { apiKey });
+                    pruned++;
+                } catch {
+                    // Silently ignore already terminated sandboxes
+                }
+            })
+        );
+
+        return pruned;
+    } catch (err) {
+        console.warn("[E2B Pruner] Failed to prune sandboxes:", err);
+        return 0;
+    }
+}
+
+/**
+ * Creates an isolated E2B cloud sandbox instance with public web traffic enabled.
+ * Automatically self-heals by pruning stale sandboxes if concurrent limit (20) is approached.
  */
 export async function createE2bSandbox(timeoutMs = E2B_SANDBOX_TIMEOUT_MS): Promise<Sandbox> {
     const apiKey = getE2bApiKey();
-    return await Sandbox.create({
+    const createConfig = {
         apiKey,
         timeoutMs,
         envs: {
@@ -37,7 +79,27 @@ export async function createE2bSandbox(timeoutMs = E2B_SANDBOX_TIMEOUT_MS): Prom
             app: "zephyre",
             timestamp: new Date().toISOString(),
         },
-    });
+    };
+
+    try {
+        return await Sandbox.create(createConfig);
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // If 20 concurrent limit or rate limit exceeded, proactively prune stale sandboxes and retry
+        if (
+            msg.includes("Rate limit exceeded") ||
+            msg.includes("maximum number of concurrent") ||
+            msg.includes("429")
+        ) {
+            console.warn(
+                "[E2B] Concurrent sandbox limit (20) reached. Automatically pruning stale microVMs and retrying..."
+            );
+            await pruneStaleSandboxes(8);
+            await new Promise((res) => setTimeout(res, 500));
+            return await Sandbox.create(createConfig);
+        }
+        throw err;
+    }
 }
 
 /**
@@ -95,6 +157,132 @@ export default defineConfig({
     },
   },
 });
+`.trim();
+
+export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
+<script id="zephyre-error-bridge">
+(function() {
+  var lastErrorKey = '';
+  function sendError(data) {
+    if (!data || !data.message) return;
+    var key = (data.file || '') + ':' + (data.line || '') + ':' + data.message;
+    if (key === lastErrorKey) return;
+    lastErrorKey = key;
+    try {
+      window.parent.postMessage({
+        source: 'zephyre-preview-error',
+        category: data.category || 'runtime',
+        message: data.message,
+        file: data.file || '',
+        line: data.line,
+        column: data.column,
+        codeFrame: data.codeFrame || '',
+        stack: data.stack || data.message
+      }, '*');
+    } catch(e) {}
+  }
+
+  function clearError() {
+    if (lastErrorKey) {
+      lastErrorKey = '';
+      try {
+        window.parent.postMessage({ source: 'zephyre-preview-clear' }, '*');
+      } catch(e) {}
+    }
+  }
+
+  window.addEventListener('error', function(e) {
+    var msg = e.message || 'Script error';
+    sendError({
+      category: 'runtime',
+      message: msg,
+      file: e.filename || '',
+      line: e.lineno,
+      column: e.colno,
+      stack: e.error ? (e.error.stack || e.error.message) : msg
+    });
+  });
+
+  window.addEventListener('unhandledrejection', function(e) {
+    var reason = e.reason;
+    var msg = reason ? (reason.stack || reason.message || String(reason)) : 'Unhandled Promise Rejection';
+    sendError({
+      category: 'runtime',
+      message: msg,
+      stack: msg
+    });
+  });
+
+  function checkViteOverlay() {
+    var overlay = document.querySelector('vite-error-overlay');
+    if (overlay) {
+      var root = overlay.shadowRoot || overlay;
+      var text = (root.textContent || '').trim();
+      if (text) {
+        var fileMatch = text.match(/(?:\\/home\\/user\\/app\\/|src\\/|\\b)([a-zA-Z0-9_\\-\\.\\/]+\\.(?:jsx?|tsx?|css|json|html|py))/i);
+        var lineMatch = text.match(/\\((\\d+):(\\d+)\\)/);
+        sendError({
+          category: 'compile',
+          message: text.split('\\n')[0] || 'Build error',
+          file: fileMatch ? fileMatch[1] : '',
+          line: lineMatch ? parseInt(lineMatch[1], 10) : undefined,
+          column: lineMatch ? parseInt(lineMatch[2], 10) : undefined,
+          codeFrame: text,
+          stack: text
+        });
+        return;
+      }
+    }
+    if (lastErrorKey && lastErrorKey.includes('plugin:vite')) {
+      clearError();
+    }
+  }
+
+  var observer = new MutationObserver(function() {
+    checkViteOverlay();
+  });
+  if (document.documentElement) {
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  } else {
+    document.addEventListener('DOMContentLoaded', function() {
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    });
+  }
+})();
+</script>
+`.trim();
+
+export const ZEPHYRE_HMR_REPORTER_CODE = `
+// Live HMR compilation error reporter for Zephyre IDE
+if (import.meta.hot) {
+  import.meta.hot.on('vite:error', (payload) => {
+    try {
+      const err = payload.err || {};
+      const fullText = [
+        err.plugin ? \`[plugin:\${err.plugin}]\` : '',
+        err.id ? \`\${err.id}:\` : '',
+        err.message,
+        err.frame
+      ].filter(Boolean).join('\\n');
+      window.parent.postMessage({
+        source: 'zephyre-preview-error',
+        category: 'compile',
+        message: err.message || 'Build error',
+        file: err.id ? err.id.replace(/^.*\\/src\\//, 'src/').replace(/^.*\\/app\\//, '') : '',
+        line: err.loc?.line,
+        column: err.loc?.column,
+        codeFrame: err.frame || '',
+        stack: fullText
+      }, '*');
+    } catch (e) {}
+  });
+
+  import.meta.hot.on('vite:beforeUpdate', () => {
+    try {
+      window.parent.postMessage({ source: 'zephyre-preview-clear' }, '*');
+    } catch (e) {}
+  });
+}
 `.trim();
 
 export const SQLITE_SHIM_CODE = `
@@ -280,9 +468,10 @@ export async function writeFilesToSandbox(
             normalizedFiles["vite.config.js"] = STANDARD_VITE_CONFIG;
         }
 
-        // Ensure index.html exists
-        if (!normalizedFiles["index.html"] && !normalizedFiles["public/index.html"]) {
-            normalizedFiles["index.html"] = `
+        // Ensure index.html exists and has the Zephyre Error Bridge attached
+        let indexHtml = normalizedFiles["index.html"] || normalizedFiles["public/index.html"];
+        if (!indexHtml) {
+            indexHtml = `
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -290,6 +479,7 @@ export async function writeFilesToSandbox(
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${fileData.title || "Zephyre App"}</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    ${ZEPHYRE_ERROR_BRIDGE_SCRIPT}
   </head>
   <body class="bg-black text-white">
     <div id="root"></div>
@@ -297,14 +487,25 @@ export async function writeFilesToSandbox(
   </body>
 </html>
 `.trim();
+            normalizedFiles["index.html"] = indexHtml;
+        } else if (!indexHtml.includes("zephyre-error-bridge")) {
+            if (indexHtml.includes("</head>")) {
+                indexHtml = indexHtml.replace("</head>", `${ZEPHYRE_ERROR_BRIDGE_SCRIPT}\n</head>`);
+            } else {
+                indexHtml = `${ZEPHYRE_ERROR_BRIDGE_SCRIPT}\n${indexHtml}`;
+            }
+            normalizedFiles["index.html"] = indexHtml;
         }
 
-        // Ensure main.jsx entry point exists
-        if (!normalizedFiles["src/main.jsx"] && !normalizedFiles["main.jsx"]) {
+        // Ensure main.jsx entry point exists and attaches HMR compilation error reporting
+        const mainJsx = normalizedFiles["src/main.jsx"] || normalizedFiles["main.jsx"];
+        if (!mainJsx) {
             normalizedFiles["src/main.jsx"] = `
 import React, { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
+
+${ZEPHYRE_HMR_REPORTER_CODE}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -312,6 +513,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </StrictMode>
 );
 `.trim();
+        } else if (!mainJsx.includes("zephyre-preview-error")) {
+            normalizedFiles["src/main.jsx"] = `${ZEPHYRE_HMR_REPORTER_CODE}\n\n${mainJsx}`;
         }
 
         // Ensure package.json exists and is normalized

@@ -17,6 +17,7 @@ import type {
     WorkspaceData,
 } from "@/types/workspace";
 import { updateWorkspaceFileData } from "@/actions/workspace";
+import { buildErrorFixPrompt } from "@/lib/error-fixer";
 
 
 
@@ -498,7 +499,12 @@ export function WorkspaceClient({
                         onImprove={handleImprove}
                         onFixError={(error) =>
                             handleGenerate(
-                                `There is a syntax or runtime error in the preview:\n\n\`\`\`\n${error}\n\`\`\`\n\nPlease fix this exact error. CRITICAL RULES:\n1. Only change the specific lines causing the error.\n2. When using variables in className, format them EXACTLY like this: className={\`my-class \${variable}\`}. Do not use regular quotes, and do not accidentally type \`}\`}> or similar typos at the end.\n3. Do not accidentally split string literals across multiple lines.\n4. Return the full corrected file.`
+                                error.startsWith("🚨")
+                                    ? error
+                                    : buildErrorFixPrompt(
+                                          error,
+                                          fileDataRef.current || fileData || { files: {}, dependencies: {} }
+                                      )
                             )
                         }
                         onFilePatch={handleFilePatch}
