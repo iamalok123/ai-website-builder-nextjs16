@@ -462,7 +462,7 @@ export function WorkspaceClient({
                         mobileView === "chat" ? "translate-x-0" : "-translate-x-full"
                     } ${
                         isChatOpen
-                            ? "md:w-[350px] lg:w-[380px] md:opacity-100"
+                            ? "md:w-87.5 lg:w-95 md:opacity-100"
                             : "md:w-0 md:opacity-0 md:pointer-events-none"
                     }`}
                 >

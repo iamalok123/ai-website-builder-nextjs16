@@ -2,7 +2,8 @@
 
 import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import CodeMirror, { ViewUpdate, EditorView } from "@uiw/react-codemirror";
-import { Copy, Check, FileCode, FileText, FileJson } from "lucide-react";
+import { Copy, Check } from "lucide-react";
+import { FileIcon } from "@/components/ui/file-icons";
 import { toast } from "sonner";
 import {
     pureBlackTheme,
@@ -45,22 +46,7 @@ const basicSetupConfig = {
 };
 
 function defaultGetFileIcon(filename: string) {
-    if (filename.endsWith(".jsx") || filename.endsWith(".tsx")) {
-        return <FileCode className="h-3.5 w-3.5 text-blue-400 shrink-0" />;
-    }
-    if (filename.endsWith(".js") || filename.endsWith(".ts") || filename.endsWith(".mjs")) {
-        return <FileCode className="h-3.5 w-3.5 text-yellow-400 shrink-0" />;
-    }
-    if (filename.endsWith(".json")) {
-        return <FileJson className="h-3.5 w-3.5 text-amber-300 shrink-0" />;
-    }
-    if (filename.endsWith(".html")) {
-        return <FileCode className="h-3.5 w-3.5 text-orange-400 shrink-0" />;
-    }
-    if (filename.endsWith(".css")) {
-        return <FileText className="h-3.5 w-3.5 text-sky-300 shrink-0" />;
-    }
-    return <FileText className="h-3.5 w-3.5 text-zinc-400 shrink-0" />;
+    return <FileIcon filename={filename} className="h-3.5 w-3.5 shrink-0" />;
 }
 
 export function CodeMirrorEditor({

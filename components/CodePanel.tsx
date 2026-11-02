@@ -17,11 +17,6 @@ import {
     Smartphone,
     Tablet,
     Monitor,
-    FileCode,
-    FileJson,
-    FileText,
-    Folder,
-    FolderOpen,
     ChevronRight,
     ChevronDown,
     PanelLeftOpen,
@@ -34,6 +29,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { FileData, StatusStep } from "@/types/workspace";
 import { CodeMirrorEditor } from "@/components/editor/CodeMirrorEditor";
+import { FolderIcon, getFileIcon } from "@/components/ui/file-icons";
 
 // Types
 type ActiveTab = "preview" | "code";
@@ -122,29 +118,6 @@ function buildFileTree(paths: string[]): FileTreeNode[] {
     return convert(root);
 }
 
-// File icon helper
-function getFileIcon(filename: string) {
-    if (filename.endsWith(".jsx") || filename.endsWith(".tsx")) {
-        return <FileCode className="h-3.5 w-3.5 text-blue-400 shrink-0" />;
-    }
-    if (filename.endsWith(".js") || filename.endsWith(".ts") || filename.endsWith(".mjs")) {
-        return <FileCode className="h-3.5 w-3.5 text-yellow-400 shrink-0" />;
-    }
-    if (filename.endsWith(".py")) {
-        return <FileCode className="h-3.5 w-3.5 text-emerald-400 shrink-0" />;
-    }
-    if (filename.endsWith(".json")) {
-        return <FileJson className="h-3.5 w-3.5 text-amber-300 shrink-0" />;
-    }
-    if (filename.endsWith(".html")) {
-        return <FileCode className="h-3.5 w-3.5 text-orange-400 shrink-0" />;
-    }
-    if (filename.endsWith(".css")) {
-        return <FileText className="h-3.5 w-3.5 text-sky-300 shrink-0" />;
-    }
-    return <FileText className="h-3.5 w-3.5 text-zinc-400 shrink-0" />;
-}
-
 // Recursive Tree Node Renderer
 function FileTreeNodeItem({
     node,
@@ -175,11 +148,7 @@ function FileTreeNodeItem({
                     ) : (
                         <ChevronDown className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
                     )}
-                    {isCollapsed ? (
-                        <Folder className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                    ) : (
-                        <FolderOpen className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                    )}
+                    <FolderIcon folderName={node.name} isOpen={!isCollapsed} className="h-3.5 w-3.5 shrink-0" />
                     <span className="truncate font-medium">{node.name}</span>
                 </button>
                 {!isCollapsed && node.children && (
