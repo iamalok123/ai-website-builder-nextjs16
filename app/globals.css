@@ -309,3 +309,12 @@ div[class*="file-explorer"] {
 .sp-tabs {
   border-radius: 0 !important;
 }
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
