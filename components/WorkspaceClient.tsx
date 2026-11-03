@@ -84,6 +84,7 @@ export function WorkspaceClient({
     const [isImproving, setIsImproving] = useState(false);
     const [mobileView, setMobileView] = useState<"chat" | "preview">("chat");
     const [isChatOpen, setIsChatOpen] = useState(true);
+    const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
 
     // AbortController refs — used to cancel in-flight streams
     const generateAbortRef = useRef<AbortController | null>(null);
@@ -492,6 +493,8 @@ export function WorkspaceClient({
                         appTitle={fileData?.title ?? workspace?.title ?? null}
                         onToggleView={toggleMobileView}
                         onToggleCollapse={() => setIsChatOpen(false)}
+                        selectedTarget={selectedTarget}
+                        onClearTarget={() => setSelectedTarget(null)}
                     />
                 </div>
                 
@@ -528,6 +531,10 @@ export function WorkspaceClient({
                         onToggleView={toggleMobileView}
                         isChatOpen={isChatOpen}
                         onToggleChat={() => setIsChatOpen(true)}
+                        onInspectElement={(target) => {
+                            setSelectedTarget(target);
+                            setMobileView("chat");
+                        }}
                     />
                 </div>
             </div>

@@ -93,6 +93,10 @@ export async function createE2bSandbox(timeoutMs = E2B_SANDBOX_TIMEOUT_MS): Prom
             allowPublicTraffic: true,
             maskRequestHost: "localhost:${PORT}",
         },
+        lifecycle: {
+            onTimeout: "pause" as const,
+            autoResume: true,
+        },
         metadata: {
             app: "zephyre",
             timestamp: new Date().toISOString(),
@@ -209,6 +213,90 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
     }
   }
 
+  // Interactive Element Inspector for Click-to-Prompt Target Selection
+  var isInspectorActive = false;
+  var hoverOutline = null;
+  var hoverBadge = null;
+
+  function ensureInspectorOverlay() {
+    if (!hoverOutline && document.body) {
+      hoverOutline = document.createElement('div');
+      hoverOutline.id = 'zephyre-inspector-overlay';
+      hoverOutline.style.cssText = 'position:fixed;pointer-events:none;z-index:999999;border:2px dashed #f97316;background:rgba(249,115,22,0.12);border-radius:4px;transition:all 40ms ease-out;display:none;';
+      hoverBadge = document.createElement('div');
+      hoverBadge.style.cssText = 'position:absolute;top:-22px;left:0;background:#f97316;color:#fff;font-size:10px;font-family:monospace;padding:1px 6px;border-radius:3px;font-weight:bold;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,0.5);';
+      hoverOutline.appendChild(hoverBadge);
+      document.body.appendChild(hoverOutline);
+    }
+  }
+
+  window.addEventListener('message', function(ev) {
+    if (ev.data && ev.data.type === 'zephyre-toggle-inspector') {
+      isInspectorActive = Boolean(ev.data.enabled);
+      ensureInspectorOverlay();
+      if (!isInspectorActive && hoverOutline) {
+        hoverOutline.style.display = 'none';
+      }
+    }
+  });
+
+  window.addEventListener('mousemove', function(e) {
+    if (!isInspectorActive) return;
+    ensureInspectorOverlay();
+    var target = document.elementFromPoint(e.clientX, e.clientY);
+    if (!target || target === hoverOutline || (hoverOutline && hoverOutline.contains(target)) || target === document.body || target === document.documentElement) {
+      if (hoverOutline) hoverOutline.style.display = 'none';
+      return;
+    }
+    var rect = target.getBoundingClientRect();
+    if (hoverOutline && hoverBadge) {
+      hoverOutline.style.display = 'block';
+      hoverOutline.style.top = rect.top + 'px';
+      hoverOutline.style.left = rect.left + 'px';
+      hoverOutline.style.width = rect.width + 'px';
+      hoverOutline.style.height = rect.height + 'px';
+
+      var tagName = target.tagName.toLowerCase();
+      var textSnippet = (target.textContent || '').trim().slice(0, 25);
+      hoverBadge.textContent = '<' + tagName + '> ' + (textSnippet ? '"' + textSnippet + '"' : '');
+    }
+  }, true);
+
+  window.addEventListener('click', function(e) {
+    if (!isInspectorActive) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var target = document.elementFromPoint(e.clientX, e.clientY);
+    if (!target) return;
+
+    var tagName = target.tagName.toLowerCase();
+    var textSnippet = (target.textContent || '').trim().slice(0, 35);
+    var classes = (target.className && typeof target.className === 'string') ? target.className.slice(0, 80) : '';
+
+    var componentHint = '';
+    var curr = target;
+    while (curr && curr !== document.body) {
+      if (curr.getAttribute('data-component')) {
+        componentHint = curr.getAttribute('data-component');
+        break;
+      }
+      curr = curr.parentElement;
+    }
+
+    try {
+      window.parent.postMessage({
+        source: 'zephyre-element-inspected',
+        tagName: tagName,
+        classes: classes,
+        textSnippet: textSnippet,
+        componentHint: componentHint
+      }, '*');
+    } catch(err) {}
+
+    isInspectorActive = false;
+    if (hoverOutline) hoverOutline.style.display = 'none';
+  }, true);
+
   // 1. Intercept customElements.define to catch Vite's ErrorOverlay instantiation directly
   if (window.customElements && typeof window.customElements.define === 'function') {
     var origDefine = window.customElements.define.bind(window.customElements);
@@ -291,8 +379,20 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
     window.WebSocket.prototype = OrigWebSocket.prototype;
   }
 
-  // 3. Global runtime and promise rejection catchers
+  // 3. Global runtime and promise rejection catchers (capturing phase catches resource load failures)
   window.addEventListener('error', function(e) {
+    var target = e.target;
+    if (target && target !== window && (target.tagName === 'SCRIPT' || target.tagName === 'LINK')) {
+      var src = target.src || target.href || 'resource';
+      var filename = src.split('/').pop() || src;
+      sendError({
+        category: 'runtime',
+        message: 'Failed to load asset or script: ' + filename,
+        file: filename,
+        stack: 'Failed to load network asset: ' + src
+      });
+      return;
+    }
     var msg = e.message || 'Script error';
     sendError({
       category: 'runtime',
@@ -302,7 +402,7 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
       column: e.colno,
       stack: e.error ? (e.error.stack || e.error.message) : msg
     });
-  });
+  }, true);
 
   window.addEventListener('unhandledrejection', function(e) {
     var reason = e.reason;
@@ -312,6 +412,22 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
       message: msg,
       stack: msg
     });
+  });
+
+  // Watchdog: If root remains unmounted after 4 seconds, surface an actionable error notification
+  window.addEventListener('load', function() {
+    setTimeout(function() {
+      var root = document.getElementById('root');
+      var loader = document.getElementById('zephyre-initial-loader');
+      if (root && (!root.childNodes || root.childNodes.length === 0 || (root.childNodes.length === 1 && root.contains(loader)))) {
+        var msg = window.__zephyre_last_error || 'Preview failed to render or React encountered a silent initialization failure.';
+        sendError({
+          category: 'runtime',
+          message: msg,
+          stack: msg
+        });
+      }
+    }, 4000);
   });
 
   // 4. Fallback DOM inspector for <vite-error-overlay> ShadowRoot
@@ -366,8 +482,24 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
 </script>
 `.trim();
 
+export const ZEPHYRE_INITIAL_LOADER = `
+<div id="zephyre-initial-loader" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#09090b;color:#a1a1aa;font-family:system-ui,-apple-system,sans-serif;gap:12px;z-index:9999;">
+  <div style="width:28px;height:28px;border:2.5px solid rgba(255,255,255,0.1);border-top-color:#f97316;border-radius:50%;animation:zephyre-spin 0.8s linear infinite;"></div>
+  <div style="font-size:12px;font-weight:500;color:#d4d4d8;letter-spacing:0.02em;">Loading preview...</div>
+  <style>@keyframes zephyre-spin{to{transform:rotate(360deg)}}</style>
+</div>
+`.trim();
+
 export const ZEPHYRE_HMR_REPORTER_CODE = `
-// Live HMR compilation error reporter for Zephyre IDE
+// Live HMR compilation error reporter & mount handshake for Zephyre IDE
+if (typeof window !== 'undefined') {
+  try {
+    window.parent.postMessage({ source: 'zephyre-preview-mounted' }, '*');
+    var initLoader = document.getElementById('zephyre-initial-loader');
+    if (initLoader) initLoader.remove();
+  } catch(e) {}
+}
+
 if (import.meta.hot) {
   import.meta.hot.on('vite:error', (payload) => {
     try {
@@ -613,20 +745,29 @@ export async function writeFilesToSandbox(
     ${ZEPHYRE_ERROR_BRIDGE_SCRIPT}
   </head>
   <body class="bg-black text-white">
-    <div id="root"></div>
+    <div id="root">
+      ${ZEPHYRE_INITIAL_LOADER}
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
 `.trim();
             normalizedFiles["index.html"] = indexHtml;
-        } else if (indexHtml.includes('id="zephyre-error-bridge"')) {
-            indexHtml = indexHtml.replace(/<script id="zephyre-error-bridge">[\s\S]*?<\/script>/, ZEPHYRE_ERROR_BRIDGE_SCRIPT);
-            normalizedFiles["index.html"] = indexHtml;
-        } else if (indexHtml.includes("</head>")) {
-            indexHtml = indexHtml.replace("</head>", `${ZEPHYRE_ERROR_BRIDGE_SCRIPT}\n</head>`);
-            normalizedFiles["index.html"] = indexHtml;
         } else {
-            indexHtml = `${ZEPHYRE_ERROR_BRIDGE_SCRIPT}\n${indexHtml}`;
+            if (indexHtml.includes('id="zephyre-error-bridge"')) {
+                indexHtml = indexHtml.replace(/<script id="zephyre-error-bridge">[\s\S]*?<\/script>/, ZEPHYRE_ERROR_BRIDGE_SCRIPT);
+            } else if (indexHtml.includes("</head>")) {
+                indexHtml = indexHtml.replace("</head>", `${ZEPHYRE_ERROR_BRIDGE_SCRIPT}\n</head>`);
+            } else {
+                indexHtml = `${ZEPHYRE_ERROR_BRIDGE_SCRIPT}\n${indexHtml}`;
+            }
+
+            // Ensure root container has a loading indicator before React mounts
+            if (indexHtml.includes('<div id="root"></div>')) {
+                indexHtml = indexHtml.replace('<div id="root"></div>', `<div id="root">${ZEPHYRE_INITIAL_LOADER}</div>`);
+            } else if (indexHtml.includes('<div id="root"> </div>')) {
+                indexHtml = indexHtml.replace('<div id="root"> </div>', `<div id="root">${ZEPHYRE_INITIAL_LOADER}</div>`);
+            }
             normalizedFiles["index.html"] = indexHtml;
         }
         delete normalizedFiles["public/index.html"];
@@ -773,6 +914,26 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 }
 
 /**
+ * Ensures sufficient Linux swap space (1024MB) is active inside the sandbox container.
+ * This guarantees esbuild pre-bundling of large libraries (like Three.js or Recharts)
+ * will never be terminated by the Linux kernel OOM killer on 512MB microVMs.
+ */
+export async function ensureSandboxSwap(sandbox: Sandbox): Promise<void> {
+    try {
+        await sandbox.commands.run(`
+            if [ ! -f /swapfile ]; then
+                sudo fallocate -l 1024M /swapfile 2>/dev/null || sudo dd if=/dev/zero of=/swapfile bs=1M count=1024
+                sudo chmod 600 /swapfile
+                sudo /sbin/mkswap /swapfile 2>/dev/null || sudo mkswap /swapfile
+                sudo /sbin/swapon /swapfile 2>/dev/null || sudo swapon /swapfile
+            fi
+        `, { timeoutMs: 25_000 });
+    } catch (err) {
+        console.warn("[E2B] Swap configuration notice:", err);
+    }
+}
+
+/**
  * Boots the dev server or application in the background, waits for port readiness,
  * and returns the live preview URL along with traffic token details
  */
@@ -781,6 +942,9 @@ export async function startSandboxApp(
     stack: "python" | "react-node",
     baseDir = "/home/user/app"
 ): Promise<{ previewUrl: string; trafficAccessToken?: string; isPublic: boolean }> {
+    // 1. Provision 1024MB swap to guarantee memory safety for heavy package installations and builds
+    await ensureSandboxSwap(sandbox);
+
     if (stack === "python") {
         // Install requirements if present
         await sandbox.commands.run(`cd ${baseDir} && if [ -f requirements.txt ]; then pip install -r requirements.txt; fi`);
@@ -799,22 +963,27 @@ export async function startSandboxApp(
         await sandbox.commands.run(
             `cd ${baseDir} && (fuser -k 3000/tcp 2>/dev/null || true); (fuser -k 3001/tcp 2>/dev/null || true)`
         );
-        // Start Node/Express backend strictly on port 3001 if server.js exists
+        // Start Node/Express backend strictly on port 3001 with supervisor if server.js exists
         await sandbox.commands.run(
-            `cd ${baseDir} && if [ -f server.js ]; then (nohup env PORT=3001 BACKEND_PORT=3001 node server.js > /tmp/backend.log 2>&1 &); fi`
+            `cd ${baseDir} && if [ -f server.js ]; then (nohup bash -c 'while true; do NODE_OPTIONS="--max-old-space-size=256" env PORT=3001 BACKEND_PORT=3001 node server.js >> /tmp/backend.log 2>&1; sleep 1; done' > /dev/null 2>&1 &); fi`
         );
-        // Start Vite dev server explicitly on port 3000
+        // Start Vite dev server explicitly on port 3000 with auto-restart supervisor loop and memory limits
         await sandbox.commands.run(
-            `cd ${baseDir} && npx vite --host 0.0.0.0 --port 3000 > /tmp/dev-server.log 2>&1`,
-            { background: true }
+            `cd ${baseDir} && (nohup bash -c 'while true; do NODE_OPTIONS="--max-old-space-size=256" npx vite --host 0.0.0.0 --port 3000 >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &)`
         );
     }
 
-    // Wait up to 20 seconds for the dev server to start responding on port 3000
+    // Wait up to 25 seconds for dev server readiness and trigger warm-up prebundling
     try {
         await sandbox.commands.run(
-            `for i in $(seq 1 60); do if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1 || curl -s -f http://localhost:3000/ > /dev/null 2>&1; then exit 0; fi; sleep 0.25; done; exit 0`,
-            { timeoutMs: 22000 }
+            `for i in $(seq 1 80); do
+                if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1 || curl -s -f http://localhost:3000/ > /dev/null 2>&1; then
+                    curl -s http://127.0.0.1:3000/src/main.jsx > /dev/null 2>&1 || true
+                    exit 0
+                fi
+                sleep 0.25
+            done; exit 0`,
+            { timeoutMs: 25000 }
         );
     } catch {
         // Dev server startup verification timed out; preview URL will still be returned

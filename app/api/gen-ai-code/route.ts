@@ -6,7 +6,7 @@ import { CREDIT_COST_PER_GENERATION } from "@/lib/constants";
 import type { Message, FileData } from "@/types/workspace";
 import { aj } from "@/lib/arcjet";
 import { revalidatePath } from "next/cache";
-import { parseLlmJson, ensureStandardFiles } from "@/lib/ai-json-parser";
+import { parseLlmJson, ensureStandardFiles, applyFileChanges, type ParsedLlmResponse } from "@/lib/ai-json-parser";
 import { isSafeExternalUrl } from "@/lib/security";
 
 
@@ -112,26 +112,26 @@ CRITICAL ARCHITECTURE & MODULAR FILE ORGANIZATION:
 
 4. RULES:
    - Always return a valid JSON object matching the exact schema below — no conversational preamble, no markdown fences.
+   - For follow-up modifications, you can provide surgical edits using "patches" or full file code using "code":
+     * For existing files where only specific lines, styling, or functions change: use "patches": [{ "search": "<exact existing code to find>", "replace": "<new replacement code>" }]
+     * For brand new files or complete rewrites: use "code": "<full file code>"
    - Schema:
 {
-  "assistantMessage": "<concise 1-2 sentence description of what you built>",
+  "assistantMessage": "<concise 1-2 sentence description of what you built or changed>",
   "title": "<short 2-4 word app title>",
   "files": {
-    "/src/App.jsx": { "code": "<root component code>" },
-    "/src/components/Header.jsx": { "code": "<header component code>" },
-    "/src/components/Dashboard.jsx": { "code": "<dashboard component code>" },
-    "/src/components/ui/Button.jsx": { "code": "<button UI primitive code>" },
-    "/src/components/ui/Card.jsx": { "code": "<card UI primitive code>" },
-    "/src/hooks/useData.js": { "code": "<custom hook code>" },
-    "/src/lib/utils.js": { "code": "<cn helper and utilities>" },
-    "/server.js": { "code": "<backend server code on port 3001>" },
-    "/README.md": { "code": "<markdown documentation>" }
+    "/src/components/Header.jsx": {
+      "patches": [
+        { "search": "<exact original code block>", "replace": "<replacement code block>" }
+      ]
+    },
+    "/src/components/NewFeature.jsx": { "code": "<complete component code>" }
   },
   "dependencies": {
     "some-extra-package": "latest"
   }
 }
-   - Never import non-existent files. All relative imports must correspond to files in "files".
+   - Never import non-existent files. All relative imports must correspond to files in "files" or existing project files.
    - Do not include react, react-dom, tailwindcss, express, cors, clsx, or tailwind-merge in "dependencies" — they are pre-installed.
    - When modifying existing code, return ONLY the files you created or changed.
    - When the user attaches files:
@@ -261,10 +261,13 @@ async function buildContents(messages: Message[], fileData: FileData | null) {
                 }
 
                 const isLast = idx === trimmed.length - 1;
-                if (isLast && fileData) {
-                    text +=
-                        "\n\nCurrent project files for context:\n" +
-                        JSON.stringify(fileData, null, 2);
+                if (isLast && fileData && fileData.files) {
+                    const fileEntries = Object.entries(fileData.files);
+                    const outline = fileEntries
+                        .map(([fPath, fObj]) => `- ${fPath} (${(fObj?.code || "").split("\n").length} lines)`)
+                        .join("\n");
+
+                    text += `\n\n=== EXISTING PROJECT CONTEXT ===\nProject Title: ${fileData.title || "Zephyre App"}\nProject Files Overview:\n${outline}\n\nCurrent Full Codebase:\n${JSON.stringify(fileData, null, 2)}`;
                 }
 
                 parts.push({ text });
@@ -413,12 +416,7 @@ export async function POST(req: NextRequest) {
                 }
 
                 // ── Parse the complete JSON response ──────────────────────────────────
-                let parsed: {
-                    assistantMessage: string;
-                    title?: string;
-                    files: Record<string, { code: string }>;
-                    dependencies?: Record<string, string>;
-                };
+                let parsed: ParsedLlmResponse;
 
                 try {
                     parsed = parseLlmJson(accumulated);
@@ -455,10 +453,10 @@ export async function POST(req: NextRequest) {
                 const validatedDeps = await validateDependencies(dependencies ?? {});
 
                 // ── Ensure Full Directory & File Hierarchy is Persisted ──────────────
-                const mergedFiles = {
-                    ...(fileData?.files || {}),
-                    ...files,
-                };
+                const mergedFiles = applyFileChanges(
+                    fileData?.files || {},
+                    files
+                );
                 const mergedDeps = {
                     ...(fileData?.dependencies || {}),
                     ...validatedDeps,

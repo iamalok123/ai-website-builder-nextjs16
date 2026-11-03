@@ -23,6 +23,7 @@ import {
     Wand2,
     X,
     Search,
+    Crosshair,
 } from "lucide-react";
 import { RingLoader } from "react-spinners";
 import JSZip from "jszip";
@@ -59,6 +60,7 @@ interface CodePanelProps {
     onToggleView: () => void;
     isChatOpen?: boolean;
     onToggleChat?: () => void;
+    onInspectElement?: (targetLabel: string) => void;
 }
 
 // ─── Build Tree Structure from Flat File Paths ──────────────────────────────
@@ -211,6 +213,7 @@ export function CodePanel({
     onToggleView,
     isChatOpen,
     onToggleChat,
+    onInspectElement,
 }: CodePanelProps) {
     const [activeTab, setActiveTab] = useState<ActiveTab>("preview");
     const [viewport, setViewport] = useState<Viewport>("desktop");
@@ -229,8 +232,14 @@ export function CodePanel({
     const [previewError, setPreviewError] = useState<ErrorInfo | null>(null);
     const [showErrorDetails, setShowErrorDetails] = useState(false);
     const [isFixingError, setIsFixingError] = useState(false);
+    const [isInspectorActive, setIsInspectorActive] = useState(false);
+    const fileDataRef = useRef(fileData);
+    useEffect(() => {
+        fileDataRef.current = fileData;
+    }, [fileData]);
+    const startSandboxRef = useRef<(data: FileData, prevId?: string | null) => Promise<void>>(() => Promise.resolve());
 
-    // Listen for live compile & runtime error events posted by the preview iframe
+    // Listen for live compile & runtime error events and inspector selections
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             if (!event.data || typeof event.data !== "object") return;
@@ -240,11 +249,44 @@ export function CodePanel({
             } else if (event.data.source === "zephyre-preview-clear") {
                 setPreviewError(null);
                 setShowErrorDetails(false);
+            } else if (event.data.source === "zephyre-preview-mounted") {
+                setIsIframeLoading(false);
+                setPreviewError(null);
+            } else if (event.data.source === "zephyre-request-restart") {
+                if (fileDataRef.current) {
+                    toast.info("Restarting cloud sandbox...");
+                    startSandboxRef.current(fileDataRef.current, sandboxIdRef.current);
+                }
+            } else if (event.data.source === "zephyre-element-inspected") {
+                setIsInspectorActive(false);
+                const tag = event.data.tagName || "element";
+                const text = event.data.textSnippet ? ` "${event.data.textSnippet}"` : "";
+                const label = event.data.componentHint
+                    ? `${event.data.componentHint} (<${tag}>)`
+                    : `<${tag}>${text}`;
+                onInspectElement?.(label);
+                toast.success(`Target element selected: ${label}`);
             }
         };
 
         window.addEventListener("message", handleMessage);
         return () => window.removeEventListener("message", handleMessage);
+    }, [onInspectElement]);
+
+    const handleToggleInspector = useCallback(() => {
+        setIsInspectorActive((prev) => {
+            const next = !prev;
+            try {
+                iframeRef.current?.contentWindow?.postMessage({
+                    type: "zephyre-toggle-inspector",
+                    enabled: next,
+                }, "*");
+            } catch {}
+            if (next) {
+                toast.info("Click any element in the preview to target it in your prompt");
+            }
+            return next;
+        });
     }, []);
 
     // Combine preview runtime/compile error with initial boot sandbox error
@@ -417,6 +459,10 @@ export default defineConfig({
         }
     }, []);
 
+    useEffect(() => {
+        startSandboxRef.current = startSandbox;
+    }, [startSandbox]);
+
     const syncSandboxFiles = useCallback(async (id: string, changedFiles: Record<string, { code: string }>) => {
         try {
             const res = await fetch("/api/sandbox", {
@@ -471,6 +517,39 @@ export default defineConfig({
             });
         }
     }, [fileData, isGenerating, sandboxId, startSandbox, syncSandboxFiles]);
+
+    // Self-healing preview watchdog: verifies container and dev-server health
+    useEffect(() => {
+        if (!sandboxId || !previewUrl || isGenerating || isStartingSandbox) return;
+
+        const checkHealth = async () => {
+            try {
+                const res = await fetch("/api/sandbox", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "health", sandboxId }),
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    if (res.status === 404 || data.code === "SANDBOX_EXPIRED") {
+                        console.warn("[CodePanel] Sandbox expired during health check, reviving...");
+                        if (fileDataRef.current) {
+                            startSandboxRef.current(fileDataRef.current, null);
+                        }
+                    }
+                } else if (data.status === "restarted") {
+                    console.info("[CodePanel] Vite dev server was revived by supervisor, refreshing preview...");
+                    if (iframeRef.current && previewUrl) {
+                        const separator = previewUrl.includes("?") ? "&" : "?";
+                        iframeRef.current.src = `${previewUrl}${separator}_t=${Date.now()}`;
+                    }
+                }
+            } catch {}
+        };
+
+        const timer = setTimeout(checkHealth, 5000);
+        return () => clearTimeout(timer);
+    }, [sandboxId, previewUrl, isGenerating, isStartingSandbox]);
 
     // Resolve code of selected file with leading-slash tolerance
     const selectedCode = useMemo(() => {
@@ -730,6 +809,21 @@ export default defineConfig({
                                     className="p-1.5 rounded-lg border border-white/5 bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
                                 >
                                     <RefreshCw className={`h-3.5 w-3.5 ${isIframeLoading ? "animate-spin text-orange-400" : ""}`} />
+                                </button>
+
+                                {/* Click-to-Inspect Element Selector */}
+                                <button
+                                    onClick={handleToggleInspector}
+                                    title={isInspectorActive ? "Click any element in preview to target it (Active)" : "Inspect element to target in prompt"}
+                                    className={cn(
+                                        "p-1.5 rounded-lg border transition-all shrink-0 cursor-pointer flex items-center gap-1",
+                                        isInspectorActive
+                                            ? "border-orange-500/60 bg-orange-500/20 text-orange-400 shadow-sm shadow-orange-500/30"
+                                            : "border-white/5 bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10"
+                                    )}
+                                >
+                                    <Crosshair className={`h-3.5 w-3.5 ${isInspectorActive ? "animate-spin text-orange-400" : ""}`} />
+                                    <span className="hidden xl:inline text-[10px] font-mono font-medium">Inspect</span>
                                 </button>
 
                                 {/* Central Omnibar Link Pill (hidden on small mobile screens to prevent overlapping) */}

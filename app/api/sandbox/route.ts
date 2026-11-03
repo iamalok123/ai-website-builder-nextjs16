@@ -6,6 +6,8 @@ import {
     killE2bSandbox,
     writeFilesToSandbox,
     startSandboxApp,
+    ensureSandboxSwap,
+    E2B_SANDBOX_TIMEOUT_MS,
     STANDARD_VITE_CONFIG,
     SQLITE_SHIM_CODE,
 } from "@/lib/e2b";
@@ -23,7 +25,7 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
         const { action, sandboxId, previousSandboxId, fileData, changedFiles } = body as {
-            action: "start" | "sync" | "stop";
+            action: "start" | "sync" | "stop" | "health" | "ping";
             sandboxId?: string;
             previousSandboxId?: string;
             fileData?: FileData;
@@ -80,6 +82,8 @@ export async function POST(req: NextRequest) {
             let sandbox;
             try {
                 sandbox = await connectE2bSandbox(sandboxId);
+                // Extend sandbox timeout during active editing session
+                await sandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS).catch(() => {});
             } catch (connErr: unknown) {
                 console.warn(`[E2B Sandbox Sync] Sandbox ${sandboxId} could not be connected:`, connErr);
                 return NextResponse.json(
@@ -178,7 +182,57 @@ export async function POST(req: NextRequest) {
                 ).catch((err) => console.warn("[E2B Sandbox Sync] Backend restart warning:", err));
             }
 
+            // Self-heal: ensure port 3000 is listening; if closed, ensure swap and restart Vite
+            sandbox.commands.run(
+                `if ! curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1; then
+                    (fuser -k 3000/tcp 2>/dev/null || true);
+                    cd ${baseDir} && (nohup bash -c 'while true; do NODE_OPTIONS="--max-old-space-size=256" npx vite --host 0.0.0.0 --port 3000 >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &);
+                fi`,
+                { background: true }
+            ).catch(() => {});
+
             return NextResponse.json({ success: true, syncedCount: promises.length });
+        }
+
+        if (action === "health" || action === "ping") {
+            if (!sandboxId) {
+                return NextResponse.json({ error: "sandboxId is required" }, { status: 400 });
+            }
+
+            let sandbox;
+            try {
+                sandbox = await connectE2bSandbox(sandboxId);
+                // Extend sandbox lifetime
+                await sandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS).catch(() => {});
+            } catch (connErr: unknown) {
+                return NextResponse.json(
+                    { error: "Sandbox is not running or has expired.", code: "SANDBOX_EXPIRED" },
+                    { status: 404 }
+                );
+            }
+
+            // Verify if Vite is responding on port 3000. If dead, auto-restart
+            const baseDir = "/home/user/app";
+            try {
+                const checkRes = await sandbox.commands.run(
+                    `if ! curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1; then
+                        (fuser -k 3000/tcp 2>/dev/null || true);
+                        cd ${baseDir} && (nohup bash -c 'while true; do NODE_OPTIONS="--max-old-space-size=256" npx vite --host 0.0.0.0 --port 3000 >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &);
+                        echo "restarted";
+                    else
+                        echo "alive";
+                    fi`
+                );
+                const host = sandbox.getHost(3000);
+                return NextResponse.json({
+                    success: true,
+                    healthy: true,
+                    previewUrl: `https://${host}`,
+                    status: checkRes.stdout.trim(),
+                });
+            } catch {
+                return NextResponse.json({ success: true, healthy: false });
+            }
         }
 
         if (action === "stop") {
@@ -190,7 +244,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: true, stopped: true });
         }
 
-        return NextResponse.json({ error: "Invalid action. Expected start, sync, or stop" }, { status: 400 });
+        return NextResponse.json({ error: "Invalid action. Expected start, sync, stop, or health" }, { status: 400 });
     } catch (error: unknown) {
         console.error("[E2B Sandbox API Error]:", error);
         const errObj = error as { result?: { stderr?: string; stdout?: string }; message?: string };

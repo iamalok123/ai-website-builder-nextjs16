@@ -12,6 +12,7 @@ import {
     ExternalLink,
     PanelLeftClose,
     FileCode,
+    Crosshair,
 } from "lucide-react";
 import { isDiagnosticPrompt, extractDiagnosticSummary } from "@/lib/error-fixer";
 import { cn } from "@/lib/utils";
@@ -56,6 +57,8 @@ interface ChatPanelProps {
     appTitle: string | null;
     onToggleView: () => void;
     onToggleCollapse?: () => void;
+    selectedTarget?: string | null;
+    onClearTarget?: () => void;
 }
 
 export function ChatPanel({
@@ -72,6 +75,8 @@ export function ChatPanel({
     appTitle,
     onToggleView,
     onToggleCollapse,
+    selectedTarget,
+    onClearTarget,
 }: ChatPanelProps) {
     const { user } = useUser();
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -132,9 +137,13 @@ export function ChatPanel({
         const trimmed = input.trim();
         if (!trimmed || isGenerating || isImproving || noCredits) return;
         const toSend = [...pendingFiles];
+        const finalPrompt = selectedTarget
+            ? `[Target Component/Element: ${selectedTarget}]\n${trimmed}`
+            : trimmed;
         setInput("");
         setPendingFiles([]);
-        await onGenerate(trimmed, toSend);
+        onClearTarget?.();
+        await onGenerate(finalPrompt, toSend);
     };
 
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -457,6 +466,25 @@ export function ChatPanel({
 
             {/* Input */}
             <div className="border-t border-white/6 p-3 sm:p-3.5 shrink-0 bg-[#0d0d0d]">
+
+                {/* Target Element Selected Chip */}
+                {selectedTarget && (
+                    <div className="flex items-center gap-1.5 mb-2.5">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-500/15 border border-orange-500/30 text-xs font-mono text-orange-300">
+                            <Crosshair className="h-3.5 w-3.5 text-orange-400" />
+                            <span className="font-semibold text-orange-200">Targeting:</span>
+                            <span className="max-w-50 truncate">{selectedTarget}</span>
+                            <button
+                                type="button"
+                                onClick={onClearTarget}
+                                className="ml-1 p-0.5 rounded hover:bg-orange-500/20 text-orange-300 hover:text-white transition-colors cursor-pointer"
+                                title="Remove target"
+                            >
+                                <X className="h-3 w-3" />
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Uploaded Files Preview Row */}
                 {pendingFiles.length > 0 && (

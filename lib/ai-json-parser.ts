@@ -1,10 +1,20 @@
 import { jsonrepair } from "jsonrepair";
 import { STANDARD_VITE_CONFIG, ZEPHYRE_ERROR_BRIDGE_SCRIPT } from "./e2b";
 
+export interface FilePatch {
+    search: string;
+    replace: string;
+}
+
+export interface FileChange {
+    code?: string;
+    patches?: FilePatch[];
+}
+
 export interface ParsedLlmResponse {
     assistantMessage: string;
     title?: string;
-    files: Record<string, { code: string }>;
+    files: Record<string, FileChange>;
     dependencies?: Record<string, string>;
 }
 
@@ -52,19 +62,111 @@ ${hasServer ? "- `/server.js` - Express backend with file-based persistence (`da
 }
 
 /**
- * Normalizes all file paths to single canonical paths:
+ * Applies a single search-and-replace patch block to source code.
+ * Uses exact matching, line-ending agnostic matching, and trimmed indentation matching.
+ * Never corrupts the original file if the target block is not found.
+ */
+export function applyPatch(
+    original: string,
+    patch: { search: string; replace: string }
+): { success: boolean; code: string } {
+    if (!patch || typeof patch.search !== "string" || typeof patch.replace !== "string") {
+        return { success: false, code: original };
+    }
+
+    const search = patch.search;
+    const replace = patch.replace;
+
+    // Strategy 1: Exact string match
+    if (original.includes(search)) {
+        return {
+            success: true,
+            code: original.replace(search, replace),
+        };
+    }
+
+    // Strategy 2: Line-ending agnostic match (normalize \r\n to \n)
+    const normOrig = original.replace(/\r\n/g, "\n");
+    const normSearch = search.replace(/\r\n/g, "\n");
+    const normReplace = replace.replace(/\r\n/g, "\n");
+
+    if (normOrig.includes(normSearch)) {
+        return {
+            success: true,
+            code: normOrig.replace(normSearch, normReplace),
+        };
+    }
+
+    // Strategy 3: Trimmed line matching (handles indentation variations)
+    const origLines = normOrig.split("\n");
+    const searchLines = normSearch.split("\n");
+
+    if (searchLines.length > 0) {
+        let sStart = 0;
+        while (sStart < searchLines.length && searchLines[sStart].trim() === "") sStart++;
+        let sEnd = searchLines.length - 1;
+        while (sEnd >= sStart && searchLines[sEnd].trim() === "") sEnd--;
+
+        const trimmedSearch = searchLines.slice(sStart, sEnd + 1);
+        if (trimmedSearch.length > 0) {
+            for (let i = 0; i <= origLines.length - trimmedSearch.length; i++) {
+                let match = true;
+                for (let j = 0; j < trimmedSearch.length; j++) {
+                    if (origLines[i + j].trim() !== trimmedSearch[j].trim()) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) {
+                    const origIndentMatch = origLines[i].match(/^\s*/);
+                    const origIndent = origIndentMatch ? origIndentMatch[0] : "";
+                    const searchIndentMatch = trimmedSearch[0].match(/^\s*/);
+                    const searchIndent = searchIndentMatch ? searchIndentMatch[0] : "";
+
+                    const replaceLines = normReplace.split("\n").map((line) => {
+                        if (line.startsWith(searchIndent)) {
+                            return origIndent + line.slice(searchIndent.length);
+                        }
+                        return line;
+                    });
+
+                    const newLines = [
+                        ...origLines.slice(0, i),
+                        ...replaceLines,
+                        ...origLines.slice(i + trimmedSearch.length),
+                    ];
+
+                    return {
+                        success: true,
+                        code: newLines.join("\n"),
+                    };
+                }
+            }
+        }
+    }
+
+    // If no match found, do NOT mutate original code
+    return { success: false, code: original };
+}
+
+/**
+ * Normalizes all file paths and changes:
  * - Ensures leading slash
  * - Eliminates duplicate root /App.jsx by canonicalizing to /src/App.jsx
  * - Normalizes root /components/* into /src/components/*
- * - Prevents dual-path file tree pollution
+ * - Preserves both full-code entries and search/replace patch arrays
  */
-export function normalizeFilePaths(
-    files: Record<string, { code: string }>
-): Record<string, { code: string }> {
-    const normalized: Record<string, { code: string }> = {};
+export function normalizeFileChanges(
+    files: Record<string, FileChange | { code: string }>
+): Record<string, FileChange> {
+    const normalized: Record<string, FileChange> = {};
 
     for (const [rawPath, fileObj] of Object.entries(files)) {
-        if (!fileObj || typeof fileObj.code !== "string") continue;
+        if (!fileObj) continue;
+        const hasPatches = "patches" in fileObj && Array.isArray(fileObj.patches) && fileObj.patches.length > 0;
+        if (typeof fileObj.code !== "string" && !hasPatches) {
+            continue;
+        }
 
         let clean = rawPath.trim();
         if (!clean.startsWith("/")) clean = "/" + clean;
@@ -86,21 +188,25 @@ export function normalizeFilePaths(
             clean = "/src/lib/" + clean.slice("/lib/".length);
         }
 
-        let code = fileObj.code;
-        // Clean up accidental LLM escape artifacts in JSX code (e.g. `\ />` or `\ >`)
-        if (clean.endsWith(".jsx") || clean.endsWith(".tsx") || clean.endsWith(".js") || clean.endsWith(".ts")) {
-            code = code.replace(/\\\s*(\/?>)/g, " $1");
-        }
+        if (typeof fileObj.code === "string") {
+            let code = fileObj.code;
+            // Clean up accidental LLM escape artifacts in JSX code (e.g. `\ />` or `\ >`)
+            if (clean.endsWith(".jsx") || clean.endsWith(".tsx") || clean.endsWith(".js") || clean.endsWith(".ts")) {
+                code = code.replace(/\\\s*(\/?>)/g, " $1");
+            }
 
-        // Guarantee server.js never binds to port 3000 (which belongs to Vite)
-        if (clean === "/server.js") {
-            code = code
-                .replace(/const\s+PORT\s*=\s*process\.env\.PORT\s*\|\|\s*\d+/g, "const PORT = process.env.BACKEND_PORT || 3001")
-                .replace(/const\s+PORT\s*=\s*3000\b/g, "const PORT = 3001")
-                .replace(/app\.listen\(\s*3000\s*,/g, "app.listen(3001,");
-        }
+            // Guarantee server.js never binds to port 3000 (which belongs to Vite)
+            if (clean === "/server.js") {
+                code = code
+                    .replace(/const\s+PORT\s*=\s*process\.env\.PORT\s*\|\|\s*\d+/g, "const PORT = process.env.BACKEND_PORT || 3001")
+                    .replace(/const\s+PORT\s*=\s*3000\b/g, "const PORT = 3001")
+                    .replace(/app\.listen\(\s*3000\s*,/g, "app.listen(3001,");
+            }
 
-        normalized[clean] = { code };
+            normalized[clean] = { code };
+        } else if ("patches" in fileObj && Array.isArray(fileObj.patches)) {
+            normalized[clean] = { patches: fileObj.patches };
+        }
     }
 
     // Strict de-duplication: If /src/App.jsx exists, never allow a lingering /App.jsx
@@ -109,6 +215,75 @@ export function normalizeFilePaths(
     }
 
     return normalized;
+}
+
+/**
+ * Legacy wrapper: Normalizes file paths and returns strictly Record<string, { code: string }>.
+ */
+export function normalizeFilePaths(
+    files: Record<string, FileChange | { code: string }>
+): Record<string, { code: string }> {
+    const changes = normalizeFileChanges(files);
+    const result: Record<string, { code: string }> = {};
+    for (const [path, obj] of Object.entries(changes)) {
+        if (typeof obj.code === "string") {
+            result[path] = { code: obj.code };
+        }
+    }
+    return result;
+}
+
+/**
+ * Merges incoming LLM file changes (both full files and surgical patch blocks)
+ * into an existing codebase and returns a fully normalized file map.
+ */
+export function applyFileChanges(
+    existingFiles: Record<string, { code: string }>,
+    incomingChanges: Record<string, FileChange | { code: string }>
+): Record<string, { code: string }> {
+    const result: Record<string, { code: string }> = { ...existingFiles };
+
+    for (const [rawPath, change] of Object.entries(incomingChanges)) {
+        if (!change) continue;
+        let cleanPath = rawPath.trim();
+        if (!cleanPath.startsWith("/")) cleanPath = "/" + cleanPath;
+
+        if (cleanPath === "/App.jsx" || cleanPath === "/App.js") cleanPath = "/src/App.jsx";
+        else if (cleanPath.startsWith("/components/")) cleanPath = "/src/components/" + cleanPath.slice("/components/".length);
+        else if (cleanPath.startsWith("/hooks/")) cleanPath = "/src/hooks/" + cleanPath.slice("/hooks/".length);
+        else if (cleanPath.startsWith("/lib/")) cleanPath = "/src/lib/" + cleanPath.slice("/lib/".length);
+
+        // Case 1: Full code replacement or brand new file
+        if (typeof change.code === "string") {
+            let code = change.code;
+            if (cleanPath.endsWith(".jsx") || cleanPath.endsWith(".tsx") || cleanPath.endsWith(".js") || cleanPath.endsWith(".ts")) {
+                code = code.replace(/\\\s*(\/?>)/g, " $1");
+            }
+            if (cleanPath === "/server.js") {
+                code = code
+                    .replace(/const\s+PORT\s*=\s*process\.env\.PORT\s*\|\|\s*\d+/g, "const PORT = process.env.BACKEND_PORT || 3001")
+                    .replace(/const\s+PORT\s*=\s*3000\b/g, "const PORT = 3001")
+                    .replace(/app\.listen\(\s*3000\s*,/g, "app.listen(3001,");
+            }
+            result[cleanPath] = { code };
+        }
+        // Case 2: Patch search/replace array
+        else if ("patches" in change && Array.isArray(change.patches) && change.patches.length > 0) {
+            const currentCode = result[cleanPath]?.code || "";
+            let patchedCode = currentCode;
+            for (const patch of change.patches) {
+                const patchResult = applyPatch(patchedCode, patch);
+                if (patchResult.success) {
+                    patchedCode = patchResult.code;
+                } else {
+                    console.warn(`[Patch Engine] Could not match search block in ${cleanPath}:`, patch.search.slice(0, 80));
+                }
+            }
+            result[cleanPath] = { code: patchedCode };
+        }
+    }
+
+    return normalizeFilePaths(result);
 }
 
 /**
@@ -184,7 +359,7 @@ export function parseLlmJson(raw: string): ParsedLlmResponse {
         if (parsed && typeof parsed === "object" && parsed.files) {
             return {
                 ...parsed,
-                files: normalizeFilePaths(parsed.files),
+                files: normalizeFileChanges(parsed.files),
             };
         }
     } catch {}
@@ -196,7 +371,7 @@ export function parseLlmJson(raw: string): ParsedLlmResponse {
         if (parsed && typeof parsed === "object" && parsed.files) {
             return {
                 ...parsed,
-                files: normalizeFilePaths(parsed.files),
+                files: normalizeFileChanges(parsed.files),
             };
         }
     } catch {}
@@ -209,7 +384,7 @@ export function parseLlmJson(raw: string): ParsedLlmResponse {
         if (parsed && typeof parsed === "object" && parsed.files) {
             return {
                 ...parsed,
-                files: normalizeFilePaths(parsed.files),
+                files: normalizeFileChanges(parsed.files),
             };
         }
     } catch {}
@@ -231,7 +406,7 @@ export function parseLlmJson(raw: string): ParsedLlmResponse {
             if (parsed && typeof parsed === "object" && parsed.files) {
                 return {
                     ...parsed,
-                    files: normalizeFilePaths(parsed.files),
+                    files: normalizeFileChanges(parsed.files),
                 };
             }
         } catch {}
@@ -249,7 +424,7 @@ export function parseLlmJson(raw: string): ParsedLlmResponse {
     const finalParsed = JSON.parse(finalRepaired);
     return {
         ...finalParsed,
-        files: normalizeFilePaths(finalParsed.files || {}),
+        files: normalizeFileChanges(finalParsed.files || {}),
     };
 }
 
