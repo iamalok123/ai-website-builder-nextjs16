@@ -1,5 +1,5 @@
 import { jsonrepair } from "jsonrepair";
-import { STANDARD_VITE_CONFIG } from "./e2b";
+import { STANDARD_VITE_CONFIG, ZEPHYRE_ERROR_BRIDGE_SCRIPT } from "./e2b";
 
 export interface ParsedLlmResponse {
     assistantMessage: string;
@@ -279,7 +279,7 @@ export function ensureStandardFiles(
         return { files: updatedFiles, dependencies };
     }
 
-    // Ensure root index.html
+    // Ensure root index.html with Error Bridge attached
     if (!updatedFiles["/index.html"]) {
         updatedFiles["/index.html"] = {
             code: `<!DOCTYPE html>
@@ -289,6 +289,7 @@ export function ensureStandardFiles(
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${title || "Zephyre App"}</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    ${ZEPHYRE_ERROR_BRIDGE_SCRIPT}
   </head>
   <body class="bg-black text-white">
     <div id="root"></div>
@@ -296,6 +297,14 @@ export function ensureStandardFiles(
   </body>
 </html>`,
         };
+    } else if (!updatedFiles["/index.html"].code.includes('id="zephyre-error-bridge"')) {
+        let code = updatedFiles["/index.html"].code;
+        if (code.includes("</head>")) {
+            code = code.replace("</head>", `${ZEPHYRE_ERROR_BRIDGE_SCRIPT}\n</head>`);
+        } else {
+            code = `${ZEPHYRE_ERROR_BRIDGE_SCRIPT}\n${code}`;
+        }
+        updatedFiles["/index.html"] = { code };
     }
 
     // Ensure root vite.config.js with allowedHosts: true, polling, and HMR

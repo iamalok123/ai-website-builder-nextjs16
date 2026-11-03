@@ -1,6 +1,23 @@
 import { Sandbox } from "e2b";
 import type { FileData } from "@/types/workspace";
-import { sanitizeSandboxPath } from "./security";
+
+/**
+ * Sanitizes a file path intended for container writing:
+ * - Prevents directory traversal (../)
+ * - Blocks null bytes and shell control characters
+ * - Normalizes to relative path
+ */
+export function sanitizeSandboxPath(rawPath: string): string | null {
+    if (!rawPath || typeof rawPath !== "string") return null;
+    const clean = rawPath.trim().replace(/^\/+/, "");
+    if (clean.includes("\0") || clean.includes("..") || clean.includes("\\")) {
+        return null;
+    }
+    if (!/^[a-zA-Z0-9_\-\.\/]+$/.test(clean)) {
+        return null;
+    }
+    return clean;
+}
 
 export const E2B_SANDBOX_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes default idle timeout
 

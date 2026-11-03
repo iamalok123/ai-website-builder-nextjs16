@@ -173,7 +173,7 @@ export async function POST(req: NextRequest) {
 
             if (hasServerJsChange) {
                 sandbox.commands.run(
-                    `cd ${baseDir} && (fuser -k 3001/tcp 2>/dev/null || true); if [ -f server.js ]; then (nohup env PORT=3001 BACKEND_PORT=3001 node server.js > /tmp/backend.log 2>&1 &); fi`,
+                    `cd ${baseDir} && (fuser -k 3001/tcp 2>/dev/null || true); if [ -f server.js ]; then (nohup bash -c 'while true; do NODE_OPTIONS="--max-old-space-size=256" env PORT=3001 BACKEND_PORT=3001 node server.js >> /tmp/backend.log 2>&1; sleep 1; done' > /dev/null 2>&1 &); fi`,
                     { background: true }
                 ).catch((err) => console.warn("[E2B Sandbox Sync] Backend restart warning:", err));
             }
