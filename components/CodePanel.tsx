@@ -657,10 +657,20 @@ export default defineConfig({
         });
     };
 
-    // Reload iframe with cache-busting timestamp
-    const handleRefreshIframe = () => {
-        if (iframeRef.current && previewUrl) {
-            setIsIframeLoading(true);
+    // Reload iframe with cache-busting timestamp & container health verification
+    const handleRefreshIframe = async () => {
+        if (!previewUrl) return;
+        setIsIframeLoading(true);
+        if (sandboxId) {
+            try {
+                await fetch("/api/sandbox", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "health", sandboxId }),
+                });
+            } catch {}
+        }
+        if (iframeRef.current) {
             const separator = previewUrl.includes("?") ? "&" : "?";
             iframeRef.current.src = `${previewUrl}${separator}_t=${Date.now()}`;
             toast.info("Reloading preview frame...");
@@ -913,74 +923,10 @@ export default defineConfig({
                         activeTab !== "preview" && "hidden!"
                     )}
                 >
-                    {/* State 1: Generation in progress */}
-                    {isGenerating && (
-                        <div className="flex flex-col items-center justify-center gap-4 text-center p-6">
-                            <RingLoader color="#f97316" size={54} />
-                            <div className="max-w-xs space-y-1">
-                                <p className="text-sm font-semibold text-white">Generating Application...</p>
-                                <p className="text-xs text-zinc-500">
-                                    {statusLog[statusLog.length - 1]?.label || "Constructing virtual file tree and styling components..."}
-                                </p>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* State 2: Booting E2B Cloud Sandbox */}
-                    {!isGenerating && isStartingSandbox && (
-                        <div className="flex flex-col items-center justify-center gap-3 text-center p-6">
-                            <Loader2 className="h-8 w-8 animate-spin text-orange-400" />
-                            <div className="max-w-xs space-y-1">
-                                <p className="text-sm font-semibold text-white">Loading...</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* State 3: Empty / No Files */}
-                    {!isGenerating && !isStartingSandbox && !previewUrl && !sandboxError && (
-                        <div className="flex flex-col items-center justify-center text-center p-6 text-zinc-500">
-                            <div className="text-4xl mb-3">⚡</div>
-                            <p className="text-sm font-medium text-zinc-400">Your live application will appear here</p>
-                            <p className="text-xs text-zinc-600 mt-1 max-w-xs">
-                                Enter a prompt in the chat panel to generate your full-stack app.
-                            </p>
-                        </div>
-                    )}
-
-                    {/* State 4: Sandbox Error */}
-                    {sandboxError && (
-                        <div className="flex flex-col items-center justify-center text-center p-6 max-w-md">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-red-500/30 bg-red-500/10 text-red-400 mb-4">
-                                <AlertTriangle className="h-6 w-6" />
-                            </div>
-                            <h3 className="text-base font-bold text-white mb-1">Sandbox Execution Failed</h3>
-                            <p className="text-xs text-zinc-400 mb-4">{sandboxError}</p>
-                            <div className="flex gap-2">
-                                <Button
-                                    size="sm"
-                                    onClick={() => fileData && startSandbox(fileData)}
-                                    className="h-8 text-xs bg-orange-600 hover:bg-orange-700 text-white"
-                                >
-                                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                                    Retry Boot
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => onFixError(sandboxError)}
-                                    className="h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10"
-                                >
-                                    <Bot className="h-3.5 w-3.5 mr-1.5" />
-                                    Fix with AI
-                                </Button>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* State 5: Active Preview Frame */}
-                    {previewUrl && !isGenerating && !isStartingSandbox && (
+                    {/* Preview Frame Container (Kept mounted to preserve live HMR & prevent 502/reload flash) */}
+                    {previewUrl ? (
                         <div
-                            className={`h-full w-full flex flex-col transition-all duration-300 ${
+                            className={`relative h-full w-full flex flex-col transition-all duration-300 ${
                                 viewport === "desktop" ? "max-w-full" :
                                 viewport === "tablet" ? "max-w-3xl border-x border-white/10 shadow-2xl" :
                                 "max-w-93.75 border-x border-white/10 shadow-2xl"
@@ -998,6 +944,21 @@ export default defineConfig({
                                     className="h-full w-full border-0 bg-white"
                                     allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write"
                                 />
+
+                                {/* Non-destructive Generation / Booting Overlay */}
+                                {(isGenerating || isStartingSandbox) && (
+                                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black/85 backdrop-blur-xs p-6 text-center animate-in fade-in duration-200">
+                                        <RingLoader color="#f97316" size={54} />
+                                        <div className="max-w-xs space-y-1">
+                                            <p className="text-sm font-semibold text-white">
+                                                {isGenerating ? "Updating Application…" : "Booting sandbox…"}
+                                            </p>
+                                            <p className="text-xs text-zinc-400">
+                                                {statusLog[statusLog.length - 1]?.label || "Applying changes and synchronizing sandbox…"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* ─── Floating Horizontal Error Recovery Bar in Preview ─── */}
                                 {activeError && (
@@ -1082,6 +1043,69 @@ export default defineConfig({
                                 )}
                             </div>
                         </div>
+                    ) : (
+                        <>
+                            {/* Empty or Pre-booting states when no previewUrl yet */}
+                            {isGenerating && (
+                                <div className="flex flex-col items-center justify-center gap-4 text-center p-6">
+                                    <RingLoader color="#f97316" size={54} />
+                                    <div className="max-w-xs space-y-1">
+                                        <p className="text-sm font-semibold text-white">Generating Application...</p>
+                                        <p className="text-xs text-zinc-500">
+                                            {statusLog[statusLog.length - 1]?.label || "Constructing virtual file tree and styling components..."}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!isGenerating && isStartingSandbox && (
+                                <div className="flex flex-col items-center justify-center gap-3 text-center p-6">
+                                    <Loader2 className="h-8 w-8 animate-spin text-orange-400" />
+                                    <div className="max-w-xs space-y-1">
+                                        <p className="text-sm font-semibold text-white">Loading...</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!isGenerating && !isStartingSandbox && sandboxError && (
+                                <div className="flex flex-col items-center justify-center text-center p-6 max-w-md">
+                                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-red-500/30 bg-red-500/10 text-red-400 mb-4">
+                                        <AlertTriangle className="h-6 w-6" />
+                                    </div>
+                                    <h3 className="text-base font-bold text-white mb-1">Sandbox Execution Failed</h3>
+                                    <p className="text-xs text-zinc-400 mb-4">{sandboxError}</p>
+                                    <div className="flex gap-2">
+                                        <Button
+                                            size="sm"
+                                            onClick={() => fileData && startSandbox(fileData)}
+                                            className="h-8 text-xs bg-orange-600 hover:bg-orange-700 text-white"
+                                        >
+                                            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                                            Retry Boot
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => onFixError(sandboxError)}
+                                            className="h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10"
+                                        >
+                                            <Bot className="h-3.5 w-3.5 mr-1.5" />
+                                            Fix with AI
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!isGenerating && !isStartingSandbox && !sandboxError && (
+                                <div className="flex flex-col items-center justify-center text-center p-6 text-zinc-500">
+                                    <div className="text-4xl mb-3">⚡</div>
+                                    <p className="text-sm font-medium text-zinc-400">Your live application will appear here</p>
+                                    <p className="text-xs text-zinc-600 mt-1 max-w-xs">
+                                        Enter a prompt in the chat panel to generate your full-stack app.
+                                    </p>
+                                </div>
+                            )}
+                        </>
                     )}
                 </TabsContent>
 

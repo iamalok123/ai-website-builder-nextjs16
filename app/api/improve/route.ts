@@ -238,7 +238,11 @@ RULES:
                     select: { credits: true },
                 });
 
-                revalidatePath("/projects");
+                try {
+                    revalidatePath("/projects");
+                } catch {
+                    // Safe swallow in streaming context
+                }
 
                 // ── Final done event ──────────────────────────────────────────────
 

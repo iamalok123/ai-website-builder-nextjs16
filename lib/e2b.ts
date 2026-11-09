@@ -414,7 +414,7 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
     });
   });
 
-  // Watchdog: If root remains unmounted after 4 seconds, surface an actionable error notification
+  // Watchdog: If root remains unmounted after 4 seconds, surface an actionable error notification and inline recovery UI
   window.addEventListener('load', function() {
     setTimeout(function() {
       var root = document.getElementById('root');
@@ -426,6 +426,8 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
           message: msg,
           stack: msg
         });
+        if (loader) loader.remove();
+        root.innerHTML = '<div style=\"min-height:100vh;display:flex;align-items:center;justify-content:center;background:#09090b;color:#f87171;font-family:sans-serif;padding:2rem;\"><div style=\"max-width:540px;background:#18181b;padding:1.5rem;border-radius:1rem;border:1px solid #ef444433;box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);\"><h3 style=\"font-weight:700;margin-bottom:0.5rem;color:#fca5a5;font-size:1.1rem;\">Application Runtime Notice</h3><p style=\"font-size:0.875rem;color:#a1a1aa;word-break:break-word;font-family:monospace;background:#09090b;padding:0.75rem;border-radius:0.5rem;border:1px solid #27272a;\">' + msg + '</p><div style=\"margin-top:1rem;display:flex;gap:0.75rem;\"><button onclick=\"location.reload()\" style=\"padding:0.5rem 1rem;background:#ef4444;color:white;border:none;border-radius:0.5rem;font-size:0.75rem;cursor:pointer;font-weight:600;\">Reload App</button></div></div></div>';
       }
     }, 4000);
   });
@@ -965,28 +967,54 @@ export async function startSandboxApp(
         );
         // Start Node/Express backend strictly on port 3001 with supervisor if server.js exists
         await sandbox.commands.run(
-            `cd ${baseDir} && if [ -f server.js ]; then (nohup bash -c 'while true; do NODE_OPTIONS="--max-old-space-size=256" env PORT=3001 BACKEND_PORT=3001 node server.js >> /tmp/backend.log 2>&1; sleep 1; done' > /dev/null 2>&1 &); fi`
+            `cd ${baseDir} && if [ -f server.js ]; then (nohup bash -c 'while true; do env PORT=3001 BACKEND_PORT=3001 node server.js >> /tmp/backend.log 2>&1; sleep 1; done' > /dev/null 2>&1 &); fi`
         );
-        // Start Vite dev server explicitly on port 3000 with auto-restart supervisor loop and memory limits
+        // Start Vite dev server explicitly on port 3000 with local binary priority and supervisor
         await sandbox.commands.run(
-            `cd ${baseDir} && (nohup bash -c 'while true; do NODE_OPTIONS="--max-old-space-size=256" npx vite --host 0.0.0.0 --port 3000 >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &)`
+            `cd ${baseDir} && (nohup bash -c 'while true; do (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &)`
         );
     }
 
-    // Wait up to 25 seconds for dev server readiness and trigger warm-up prebundling
+    // Wait up to 30 seconds for dev server readiness and trigger warm-up prebundling
+    let isReady = false;
     try {
         await sandbox.commands.run(
-            `for i in $(seq 1 80); do
+            `for i in $(seq 1 60); do
                 if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1 || curl -s -f http://localhost:3000/ > /dev/null 2>&1; then
                     curl -s http://127.0.0.1:3000/src/main.jsx > /dev/null 2>&1 || true
                     exit 0
                 fi
-                sleep 0.25
-            done; exit 0`,
-            { timeoutMs: 25000 }
+                sleep 0.5
+            done; exit 1`,
+            { timeoutMs: 32_000 }
         );
+        isReady = true;
     } catch {
-        // Dev server startup verification timed out; preview URL will still be returned
+        // Dev server startup check timed out; attempt quick kickstart
+        console.warn("[E2B] Dev server initial warm-up notice, executing kickstart...");
+        try {
+            await sandbox.commands.run(
+                `cd ${baseDir} && (nohup bash -c '(./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1' > /dev/null 2>&1 &)`
+            );
+            await sandbox.commands.run(
+                `for i in $(seq 1 20); do
+                    if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1; then exit 0; fi
+                    sleep 0.5
+                done; exit 0`,
+                { timeoutMs: 12_000 }
+            );
+            isReady = true;
+        } catch {
+            isReady = false;
+        }
+    }
+
+    if (!isReady) {
+        const log = await sandbox.commands.run("tail -n 25 /tmp/dev-server.log 2>&1 || true").catch(() => null);
+        const logText = log?.stdout?.trim() || "";
+        if (logText.includes("error") || logText.includes("failed") || logText.includes("Cannot find")) {
+            throw new Error(`Development server failed to boot: ${logText.slice(0, 300)}`);
+        }
     }
 
     // Port 3000 is the standard preview port

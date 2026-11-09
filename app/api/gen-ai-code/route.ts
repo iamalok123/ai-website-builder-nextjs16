@@ -377,7 +377,7 @@ export async function POST(req: NextRequest) {
                 const contents = await buildContents(messages, fileData);
 
                 const geminiStream = await ai.models.generateContentStream({
-                    model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
+                    model: process.env.GEMINI_MODEL || "gemini-3.8-flash",
                     contents,
                     config: {
                         systemInstruction: getSystemPrompt(messages),
@@ -394,25 +394,35 @@ export async function POST(req: NextRequest) {
                 let accumulated = ""; // final JSON output
                 let lastEmitTime = 0; // throttle thought emissions
 
-                for await (const chunk of geminiStream) {
-                    const parts = chunk.candidates?.[0]?.content?.parts ?? [];
+                try {
+                    for await (const chunk of geminiStream) {
+                        const parts = chunk.candidates?.[0]?.content?.parts ?? [];
 
-                    for (const part of parts) {
-                        if (!part.text) continue;
+                        for (const part of parts) {
+                            if (!part.text) continue;
 
-                        if (part.thought) {
-                            const now = Date.now();
-                            if (now - lastEmitTime > 600) {
-                                const label = extractThoughtLabel(part.text);
-                                if (label) {
-                                    enqueue(sseEvent("status", { message: label }));
-                                    lastEmitTime = now;
+                            if (part.thought) {
+                                const now = Date.now();
+                                if (now - lastEmitTime > 600) {
+                                    const label = extractThoughtLabel(part.text);
+                                    if (label) {
+                                        enqueue(sseEvent("status", { message: label }));
+                                        lastEmitTime = now;
+                                    }
                                 }
+                            } else {
+                                accumulated += part.text;
                             }
-                        } else {
-                            accumulated += part.text;
                         }
                     }
+                } catch (streamIterErr: unknown) {
+                    const msg = streamIterErr instanceof Error ? streamIterErr.message : String(streamIterErr);
+                    console.warn("[gen-ai-code] Gemini stream notice during iteration:", msg);
+                    // If stream closed with incomplete segment or reset but we accumulated enough valid JSON, proceed!
+                    if (!accumulated || accumulated.length < 50) {
+                        throw streamIterErr;
+                    }
+                    console.info(`[gen-ai-code] Resilient recovery: proceeding with accumulated buffer (${accumulated.length} bytes)`);
                 }
 
                 // ── Parse the complete JSON response ──────────────────────────────────
@@ -549,7 +559,11 @@ export async function POST(req: NextRequest) {
                     select: { credits: true },
                 }).catch(() => null);
 
-                revalidatePath("/projects");
+                try {
+                    revalidatePath("/projects");
+                } catch {
+                    // Safe swallow in streaming context
+                }
 
                 // Emit final result done event
                 enqueue(
