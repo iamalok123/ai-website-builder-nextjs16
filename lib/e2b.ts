@@ -429,22 +429,22 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
     }
   };
 
-  // Watchdog: If root remains unmounted after 4 seconds, surface an actionable error notification and inline recovery UI
+  // Watchdog: Only surface a notice if React truly encountered a fatal error after a generous grace period (20s)
   window.addEventListener('load', function() {
     setTimeout(function() {
+      if (window.__zephyre_mounted) return;
       var root = document.getElementById('root');
       var loader = document.getElementById('zephyre-initial-loader');
-      if (root && (!root.childNodes || root.childNodes.length === 0 || (root.childNodes.length === 1 && root.contains(loader)))) {
-        var msg = window.__zephyre_last_error || 'Preview failed to render or React encountered a silent initialization failure.';
+      if (window.__zephyre_last_error && root && (!root.childNodes || root.childNodes.length === 0 || (root.childNodes.length === 1 && root.contains(loader)))) {
         sendError({
           category: 'runtime',
-          message: msg,
-          stack: msg
+          message: window.__zephyre_last_error,
+          stack: window.__zephyre_last_error
         });
         if (loader) loader.remove();
-        root.innerHTML = '<div style=\"min-height:100vh;display:flex;align-items:center;justify-content:center;background:#09090b;color:#f87171;font-family:sans-serif;padding:2rem;\"><div style=\"max-width:540px;background:#18181b;padding:1.5rem;border-radius:1rem;border:1px solid #ef444433;box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);\"><h3 style=\"font-weight:700;margin-bottom:0.5rem;color:#fca5a5;font-size:1.1rem;\">Application Runtime Notice</h3><p style=\"font-size:0.875rem;color:#a1a1aa;word-break:break-word;font-family:monospace;background:#09090b;padding:0.75rem;border-radius:0.5rem;border:1px solid #27272a;\">' + msg + '</p><div style=\"margin-top:1rem;display:flex;gap:0.75rem;\"><button onclick=\"location.reload()\" style=\"padding:0.5rem 1rem;background:#ef4444;color:white;border:none;border-radius:0.5rem;font-size:0.75rem;cursor:pointer;font-weight:600;\">Reload App</button></div></div></div>';
+        root.innerHTML = '<div style=\"min-height:100vh;display:flex;align-items:center;justify-content:center;background:#09090b;color:#f87171;font-family:sans-serif;padding:2rem;\"><div style=\"max-width:540px;background:#18181b;padding:1.5rem;border-radius:1rem;border:1px solid #ef444433;box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);\"><h3 style=\"font-weight:700;margin-bottom:0.5rem;color:#fca5a5;font-size:1.1rem;\">Application Runtime Notice</h3><p style=\"font-size:0.875rem;color:#a1a1aa;word-break:break-word;font-family:monospace;background:#09090b;padding:0.75rem;border-radius:0.5rem;border:1px solid #27272a;\">' + window.__zephyre_last_error + '</p><div style=\"margin-top:1rem;display:flex;gap:0.75rem;\"><button onclick=\"location.reload()\" style=\"padding:0.5rem 1rem;background:#ef4444;color:white;border:none;border-radius:0.5rem;font-size:0.75rem;cursor:pointer;font-weight:600;\">Reload App</button></div></div></div>';
       }
-    }, 4000);
+    }, 20000);
   });
 
   // 4. Fallback DOM inspector for <vite-error-overlay> ShadowRoot
@@ -510,6 +510,7 @@ export const ZEPHYRE_INITIAL_LOADER = `
 export const ZEPHYRE_HMR_REPORTER_CODE = `
 // Live HMR compilation error reporter & mount handshake for Zephyre IDE
 if (typeof window !== 'undefined') {
+  window.__zephyre_mounted = true;
   try {
     window.parent.postMessage({ source: 'zephyre-preview-mounted' }, '*');
     var initLoader = document.getElementById('zephyre-initial-loader');
