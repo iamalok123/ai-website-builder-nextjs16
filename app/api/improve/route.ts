@@ -136,34 +136,39 @@ export async function POST(request: NextRequest) {
 
             const agent = new Agent({
                 providerId: "gemini",
-                modelId: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+                modelId: process.env.GEMINI_MODEL || "gemini-3.8-flash",
                 apiKey: process.env.GEMINI_API_KEY!,
                 maxIterations: 20,
-                systemPrompt: `You are an expert full-stack developer improving a live web application running in an isolated cloud microVM.
+                systemPrompt: `You are an elite principal full-stack developer improving and modifying a live, production-grade web application running in an isolated cloud microVM.
 
-The app uses React 19 (functional components), Tailwind CSS for styling, and runs in an E2B cloud sandbox.
-Available packages: react, react-dom, tailwindcss, lucide-react, recharts, react-router-dom, framer-motion, date-fns, zod, react-hook-form, clsx, tailwind-merge.
+The app is built with React 19 (functional components with hooks), Tailwind CSS for luxury styling, and an Express file-backed persistence server on port 3001.
+Available packages: react, react-dom, tailwindcss, lucide-react, recharts, react-router-dom, framer-motion, date-fns, zod, react-hook-form, clsx, tailwind-merge, express, cors.
 
 Here are the current files:
 
 ${fileContext}
 
 WORKFLOW:
-1. Understand what the user wants improved.
-2. Identify which files need to change.
-3. Call update_file for each file that needs changes (always include the COMPLETE file, not just the diff).
-4. Once all files are updated, call done_improving with a short summary.
+1. Understand the user's requested improvements, modifications, or bug fixes.
+2. Maintain existing architectural integrity:
+   - If this is a focused utility/game, preserve single-screen polish, Web Audio, score history, and state.
+   - If this is a platform/store/SaaS, preserve the multi-view routing, navigation header, catalog, cart drawer, modals, and footer.
+3. Identify which files need to change or be created.
+4. Call update_file for each file that needs changes (always provide the COMPLETE, error-free file content).
+5. Once all files are updated, call done_improving with a short summary.
 
 RULES:
-- Always write complete file contents — never partial snippets.
-- Keep all existing functionality unless asked to remove it.
-- The entry point is always /App.jsx with a default export.
+- Always write complete file contents — never partial snippets or placeholders.
+- Keep all existing features, data structures, and views unless specifically asked to change or remove them.
+- Preserve optimistic UI state updates for immediate 0ms user feedback.
+- Entry point is /src/App.jsx (or /App.jsx) with a default export.
 - Use .jsx file extensions for all React component files.
-- All imports must reference files you've updated or packages in the available list above.
-- CRITICAL IMPORT RULE: Do not hallucinate imports. If you import icons from \`lucide-react\`, only use standard existing lucide icons. Do not import non-existent components (like \`Stats\`) from libraries.
-- CRITICAL EXPORT RULE: If you create a new component in a file, ensure it is properly exported. If you use a composite component, ensure it is defined in the file or imported correctly.
-- CRITICAL TAILWIND FIX: If you need dynamic class names with template literals, use EXACTLY this syntax: className={\`my-class \${variable}\`}. Do NOT use regular quotes, and do not accidentally type \`}\`}> or similar typos.
-- PRO TIP: If you need to update multiple files, you can call \`update_file\` multiple times in a single turn to save iterations!`,
+- All imports must reference valid existing files or installed packages.
+- CRITICAL IMPORT RULE: Do not hallucinate imports. If you import icons from \`lucide-react\`, only use standard existing lucide icons.
+- CRITICAL EXPORT RULE: If you create a new component in a file, ensure it is properly exported.
+- CRITICAL DEFENSIVE CODING: Use optional chaining (item?.title) and image onError fallbacks to prevent runtime crashes.
+- CRITICAL TAILWIND SYNTAX: If dynamic class names are needed, use: className={\`my-class \${variable}\`}.
+- PRO TIP: You can call \`update_file\` multiple times in a single turn to update all necessary files efficiently!`,
                 tools: [updateFileTool, doneImprovingTool],
                 // Auto-approve both tools — no human-in-the-loop needed in this context
                 toolPolicies: {

@@ -401,21 +401,6 @@ export default defineConfig({
         sandboxIdRef.current = sandboxId;
     }, [sandboxId]);
 
-    // Unmount cleanup: terminate the running sandbox immediately to prevent orphaned containers
-    useEffect(() => {
-        return () => {
-            const currentId = sandboxIdRef.current;
-            if (currentId) {
-                fetch("/api/sandbox", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action: "stop", sandboxId: currentId }),
-                    keepalive: true,
-                }).catch(() => {});
-            }
-        };
-    }, []);
-
     const startSandbox = useCallback(async (data: FileData, previousId?: string | null) => {
         if (!data.files || Object.keys(data.files).length === 0) return;
         if (isStartingRef.current) return;

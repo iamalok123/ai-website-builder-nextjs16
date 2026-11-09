@@ -414,6 +414,21 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
     });
   });
 
+  // 3b. Intercept console.error for React 19 component render failures
+  var origConsoleError = console.error;
+  console.error = function() {
+    var args = Array.prototype.slice.call(arguments);
+    origConsoleError.apply(console, args);
+    var firstArg = args[0];
+    if (typeof firstArg === 'string' && (firstArg.includes('The above error occurred') || firstArg.includes('Uncaught Error'))) {
+      sendError({
+        category: 'runtime',
+        message: firstArg.slice(0, 300),
+        stack: args.map(function(a) { return typeof a === 'object' ? (a && a.stack ? a.stack : JSON.stringify(a)) : String(a); }).join('\\n')
+      });
+    }
+  };
+
   // Watchdog: If root remains unmounted after 4 seconds, surface an actionable error notification and inline recovery UI
   window.addEventListener('load', function() {
     setTimeout(function() {
@@ -500,6 +515,63 @@ if (typeof window !== 'undefined') {
     var initLoader = document.getElementById('zephyre-initial-loader');
     if (initLoader) initLoader.remove();
   } catch(e) {}
+}
+
+class ZephyreErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error: error };
+  }
+  componentDidCatch(error, errorInfo) {
+    try {
+      window.parent.postMessage({
+        source: 'zephyre-preview-error',
+        category: 'runtime',
+        message: error ? (error.message || String(error)) : 'Component render error',
+        stack: (error && error.stack ? error.stack : '') + '\\n' + (errorInfo && errorInfo.componentStack ? errorInfo.componentStack : '')
+      }, '*');
+    } catch(e) {}
+  }
+  render() {
+    if (this.state.hasError) {
+      var err = this.state.error;
+      var errMsg = err ? (err.message || String(err)) : 'Unknown component error';
+      return React.createElement('div', {
+        style: {
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#09090b',
+          color: '#f87171',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+          padding: '2rem'
+        }
+      }, React.createElement('div', {
+        style: {
+          maxWidth: '560px',
+          width: '100%',
+          background: '#18181b',
+          padding: '1.75rem',
+          borderRadius: '1rem',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.75)'
+        }
+      }, [
+        React.createElement('h3', { key: 'h3', style: { color: '#fca5a5', fontSize: '1.15rem', fontWeight: 700, margin: '0 0 0.5rem 0' } }, 'Application Runtime Notice'),
+        React.createElement('p', { key: 'p', style: { fontSize: '0.875rem', color: '#a1a1aa', margin: '0 0 1.25rem 0', fontFamily: 'monospace', background: '#09090b', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #27272a', wordBreak: 'break-word', whiteSpace: 'pre-wrap' } }, errMsg),
+        React.createElement('button', {
+          key: 'btn',
+          onClick: () => this.setState({ hasError: false, error: null }),
+          style: { padding: '0.5rem 1.25rem', background: '#f97316', color: '#ffffff', border: 'none', borderRadius: '0.5rem', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }
+        }, 'Retry Component')
+      ]));
+    }
+    return this.props.children;
+  }
 }
 
 if (import.meta.hot) {
@@ -786,12 +858,18 @@ ${ZEPHYRE_HMR_REPORTER_CODE}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    <ZephyreErrorBoundary>
+      <App />
+    </ZephyreErrorBoundary>
   </StrictMode>
 );
 `.trim();
         } else if (!mainJsx.includes("zephyre-preview-error")) {
-            normalizedFiles["src/main.jsx"] = `${ZEPHYRE_HMR_REPORTER_CODE}\n\n${mainJsx}`;
+            let wrappedJsx = mainJsx;
+            if (!wrappedJsx.includes("ZephyreErrorBoundary")) {
+                wrappedJsx = wrappedJsx.replace(/<App\s*\/>/g, "<ZephyreErrorBoundary><App /></ZephyreErrorBoundary>");
+            }
+            normalizedFiles["src/main.jsx"] = `${ZEPHYRE_HMR_REPORTER_CODE}\n\n${wrappedJsx}`;
         }
 
         // Ensure package.json exists and is normalized
