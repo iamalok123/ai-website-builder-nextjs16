@@ -88,6 +88,7 @@ export async function createE2bSandbox(timeoutMs = E2B_SANDBOX_TIMEOUT_MS): Prom
         envs: {
             HOST: "0.0.0.0",
             BACKEND_PORT: "3001",
+            NODE_OPTIONS: "--max-old-space-size=384",
         },
         network: {
             allowPublicTraffic: true,
@@ -509,7 +510,7 @@ export const ZEPHYRE_INITIAL_LOADER = `
 `.trim();
 
 export const ZEPHYRE_HMR_REPORTER_CODE = `
-// Live HMR compilation error reporter & mount handshake for Zephyre IDE
+// Live mount handshake and HMR compilation error reporter for Zephyre IDE
 if (typeof window !== 'undefined') {
   window.__zephyre_mounted = true;
   try {
@@ -517,63 +518,6 @@ if (typeof window !== 'undefined') {
     var initLoader = document.getElementById('zephyre-initial-loader');
     if (initLoader) initLoader.remove();
   } catch(e) {}
-}
-
-class ZephyreErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error: error };
-  }
-  componentDidCatch(error, errorInfo) {
-    try {
-      window.parent.postMessage({
-        source: 'zephyre-preview-error',
-        category: 'runtime',
-        message: error ? (error.message || String(error)) : 'Component render error',
-        stack: (error && error.stack ? error.stack : '') + '\\n' + (errorInfo && errorInfo.componentStack ? errorInfo.componentStack : '')
-      }, '*');
-    } catch(e) {}
-  }
-  render() {
-    if (this.state.hasError) {
-      var err = this.state.error;
-      var errMsg = err ? (err.message || String(err)) : 'Unknown component error';
-      return React.createElement('div', {
-        style: {
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#09090b',
-          color: '#f87171',
-          fontFamily: 'system-ui, -apple-system, sans-serif',
-          padding: '2rem'
-        }
-      }, React.createElement('div', {
-        style: {
-          maxWidth: '560px',
-          width: '100%',
-          background: '#18181b',
-          padding: '1.75rem',
-          borderRadius: '1rem',
-          border: '1px solid rgba(239, 68, 68, 0.3)',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.75)'
-        }
-      }, [
-        React.createElement('h3', { key: 'h3', style: { color: '#fca5a5', fontSize: '1.15rem', fontWeight: 700, margin: '0 0 0.5rem 0' } }, 'Application Runtime Notice'),
-        React.createElement('p', { key: 'p', style: { fontSize: '0.875rem', color: '#a1a1aa', margin: '0 0 1.25rem 0', fontFamily: 'monospace', background: '#09090b', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #27272a', wordBreak: 'break-word', whiteSpace: 'pre-wrap' } }, errMsg),
-        React.createElement('button', {
-          key: 'btn',
-          onClick: () => this.setState({ hasError: false, error: null }),
-          style: { padding: '0.5rem 1.25rem', background: '#f97316', color: '#ffffff', border: 'none', borderRadius: '0.5rem', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }
-        }, 'Retry Component')
-      ]));
-    }
-    return this.props.children;
-  }
 }
 
 if (import.meta.hot) {
@@ -866,13 +810,14 @@ import App from './App.jsx';
 ${cssImport}
 ${ZEPHYRE_HMR_REPORTER_CODE}
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <ZephyreErrorBoundary>
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(
+    <StrictMode>
       <App />
-    </ZephyreErrorBoundary>
-  </StrictMode>
-);
+    </StrictMode>
+  );
+}
 `.trim();
         delete normalizedFiles["main.jsx"];
 
@@ -1043,9 +988,9 @@ export async function startSandboxApp(
             `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || npm install --silent --no-audit --no-fund --force || true)`,
             { timeoutMs: 120_000 }
         );
-        // Ensure both ports 3000 and 3001 are clean of any stale processes
+        // Ensure both ports 3000 and 3001 are clean and dev server logs exist
         await sandbox.commands.run(
-            `cd ${baseDir} && (fuser -k 3000/tcp 2>/dev/null || true); (fuser -k 3001/tcp 2>/dev/null || true)`
+            `touch /tmp/dev-server.log /tmp/backend.log; (fuser -k 3000/tcp 2>/dev/null || true); (fuser -k 3001/tcp 2>/dev/null || true)`
         );
         // Start Node/Express backend strictly on port 3001 with supervisor if server.js exists
         await sandbox.commands.run(
@@ -1053,7 +998,7 @@ export async function startSandboxApp(
         );
         // Start Vite dev server explicitly on port 3000 with local binary priority and supervisor
         await sandbox.commands.run(
-            `cd ${baseDir} && (nohup bash -c 'while true; do env NODE_OPTIONS="--max-old-space-size=384" (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &)`
+            `cd ${baseDir} && (nohup bash -c 'export NODE_OPTIONS="--max-old-space-size=384"; while true; do (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &)`
         );
     }
 
@@ -1076,7 +1021,7 @@ export async function startSandboxApp(
         console.warn("[E2B] Dev server initial warm-up notice, executing kickstart...");
         try {
             await sandbox.commands.run(
-                `cd ${baseDir} && (nohup bash -c 'env NODE_OPTIONS="--max-old-space-size=384" (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1' > /dev/null 2>&1 &)`
+                `cd ${baseDir} && (nohup bash -c 'export NODE_OPTIONS="--max-old-space-size=384"; (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1' > /dev/null 2>&1 &)`
             );
             await sandbox.commands.run(
                 `for i in $(seq 1 20); do

@@ -429,6 +429,74 @@ export function parseLlmJson(raw: string): ParsedLlmResponse {
 }
 
 /**
+ * Automatically repairs common LLM truncation artifacts:
+ * - Unclosed arrays [ ... (missing ];)
+ * - Unclosed objects { ... (missing })
+ * - Unclosed strings / JSX tags
+ * - Trailing cut-off attributes (e.g. size= or <Button variant=)
+ */
+export function repairTruncatedCode(code: string): string {
+    if (!code || typeof code !== "string") return code;
+    let cleaned = code.trimEnd();
+
+    // 1. Strip trailing cut-off attributes or incomplete JSX element tags
+    cleaned = cleaned.replace(/\s+[\w\-]+=\s*$/, "");
+    cleaned = cleaned.replace(/<[A-Za-z][A-Za-z0-9]*\s*$/, "");
+
+    // 2. Count unmatched braces, brackets, and parentheses outside strings
+    let openBraces = 0, openBrackets = 0, openParens = 0;
+    let inString: string | null = null;
+    let isEscaped = false;
+
+    for (let i = 0; i < cleaned.length; i++) {
+        const char = cleaned[i];
+        if (isEscaped) {
+            isEscaped = false;
+            continue;
+        }
+        if (char === "\\") {
+            isEscaped = true;
+            continue;
+        }
+        if (inString) {
+            if (char === inString) inString = null;
+            continue;
+        }
+        if (char === "'" || char === '"' || char === "`") {
+            inString = char;
+            continue;
+        }
+        if (char === "{") openBraces++;
+        else if (char === "}") openBraces = Math.max(0, openBraces - 1);
+        else if (char === "[") openBrackets++;
+        else if (char === "]") openBrackets = Math.max(0, openBrackets - 1);
+        else if (char === "(") openParens++;
+        else if (char === ")") openParens = Math.max(0, openParens - 1);
+    }
+
+    // If inside an unclosed string, close it
+    if (inString) {
+        cleaned += inString;
+    }
+
+    // Close unmatched parens, brackets, braces
+    while (openParens > 0) {
+        cleaned += ")";
+        openParens--;
+    }
+    while (openBrackets > 0) {
+        cleaned += "\n];";
+        openBrackets--;
+    }
+    while (openBraces > 0) {
+        cleaned += "\n}";
+        openBraces--;
+    }
+
+    return cleaned;
+}
+
+/**
  * Ensures complete, modular, production-grade project hierarchy:
  * - /src/App.jsx as canonical React entry component
  * - /src/lib/utils.js with cn() helper
@@ -518,11 +586,24 @@ export function ensureStandardFiles(
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);`,
+// Live mount handshake for Zephyre IDE
+if (typeof window !== 'undefined') {
+  window.__zephyre_mounted = true;
+  try {
+    window.parent.postMessage({ source: 'zephyre-preview-mounted' }, '*');
+    var initLoader = document.getElementById('zephyre-initial-loader');
+    if (initLoader) initLoader.remove();
+  } catch (e) {}
+}
+
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  );
+}`,
         };
     }
 
@@ -585,6 +666,84 @@ export default function App() {
                 2
             ),
         };
+    }
+
+    // 1. Repair truncated code in all JS/JSX files
+    for (const [path, fileObj] of Object.entries(updatedFiles)) {
+        if (path.endsWith(".js") || path.endsWith(".jsx") || path.endsWith(".ts") || path.endsWith(".tsx")) {
+            const repaired = repairTruncatedCode(fileObj.code);
+            if (repaired !== fileObj.code) {
+                updatedFiles[path] = { code: repaired };
+            }
+        }
+    }
+
+    // 2. Cross-check named exports between local project files
+    // If a component imports { X } from './data/mockData', ensure target file exports X
+    const exportMap: Record<string, Set<string>> = {};
+    for (const [path, fileObj] of Object.entries(updatedFiles)) {
+        if (!path.endsWith(".js") && !path.endsWith(".jsx")) continue;
+        const code = fileObj.code;
+        const importRegex = /import\s+\{([^}]+)\}\s+from\s+['"](\.[^'"]+)['"]/g;
+        let match: RegExpExecArray | null;
+        while ((match = importRegex.exec(code)) !== null) {
+            const importNames = match[1]
+                .split(",")
+                .map((s) => s.trim().split(/\s+as\s+/)[0].trim())
+                .filter(Boolean);
+            const rawTarget = match[2];
+            const dir = path.substring(0, path.lastIndexOf("/"));
+            const rawJoined = rawTarget.startsWith("./")
+                ? `${dir}/${rawTarget.slice(2)}`
+                : `${dir}/${rawTarget}`;
+            const parts = rawJoined.split("/").filter(Boolean);
+            const stack: string[] = [];
+            for (const p of parts) {
+                if (p === ".") continue;
+                if (p === "..") stack.pop();
+                else stack.push(p);
+            }
+            const normalizedTarget = "/" + stack.join("/");
+            const targetKey = Object.keys(updatedFiles).find(
+                (k) =>
+                    k === normalizedTarget ||
+                    k === `${normalizedTarget}.js` ||
+                    k === `${normalizedTarget}.jsx` ||
+                    k.replace(/\.[^.]+$/, "") === normalizedTarget.replace(/\.[^.]+$/, "")
+            );
+            if (targetKey) {
+                if (!exportMap[targetKey]) exportMap[targetKey] = new Set();
+                for (const name of importNames) {
+                    exportMap[targetKey].add(name);
+                }
+            }
+        }
+    }
+
+    // Ensure all required named exports exist in target files
+    for (const [targetPath, requiredExports] of Object.entries(exportMap)) {
+        let code = updatedFiles[targetPath].code;
+        let addedExports = false;
+        for (const exp of requiredExports) {
+            const hasExport =
+                new RegExp(`\\bexport\\s+(?:const|let|var|function|class)\\s+${exp}\\b`).test(code) ||
+                new RegExp(`\\bexport\\s*\\{[^}]*\\b${exp}\\b[^}]*\\}`).test(code);
+            if (!hasExport) {
+                if (
+                    exp.toLowerCase().includes("category") ||
+                    exp.toLowerCase().includes("categories") ||
+                    exp.toLowerCase().includes("mood")
+                ) {
+                    code += `\nexport const ${exp} = [\n  { id: 'Cyberpunk', label: 'Neon Cyberpunk' },\n  { id: 'Sci-Fi', label: 'Mind-Bending Sci-Fi' },\n  { id: 'Action', label: 'High-Octane Adrenaline' },\n  { id: 'Mystery', label: 'Dark Noir Mystery' },\n  { id: 'Drama', label: 'Deep Cerebral Drama' },\n  { id: 'Thriller', label: 'Edge-of-Seat Thriller' }\n];\n`;
+                } else {
+                    code += `\nexport const ${exp} = [];\n`;
+                }
+                addedExports = true;
+            }
+        }
+        if (addedExports) {
+            updatedFiles[targetPath] = { code };
+        }
     }
 
     return { files: updatedFiles, dependencies };

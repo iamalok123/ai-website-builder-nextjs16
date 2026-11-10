@@ -186,7 +186,8 @@ export async function POST(req: NextRequest) {
             sandbox.commands.run(
                 `if ! curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1; then
                     (fuser -k 3000/tcp 2>/dev/null || true);
-                    cd ${baseDir} && (nohup bash -c 'while true; do env NODE_OPTIONS="--max-old-space-size=384" (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &);
+                    touch /tmp/dev-server.log;
+                    cd ${baseDir} && (nohup bash -c 'export NODE_OPTIONS="--max-old-space-size=384"; while true; do (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &);
                 fi`,
                 { background: true }
             ).catch(() => {});
@@ -217,7 +218,8 @@ export async function POST(req: NextRequest) {
                 const checkRes = await sandbox.commands.run(
                     `if ! curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1; then
                         (fuser -k 3000/tcp 2>/dev/null || true);
-                        cd ${baseDir} && (nohup bash -c 'while true; do env NODE_OPTIONS="--max-old-space-size=384" (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &);
+                        touch /tmp/dev-server.log;
+                        cd ${baseDir} && (nohup bash -c 'export NODE_OPTIONS="--max-old-space-size=384"; while true; do (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &);
                         echo "restarted";
                     else
                         echo "alive";

@@ -41,13 +41,26 @@ function migrateWorkspaceFiles(files, title) {
     updated["/src/main.jsx"] = {
         code: `import React, { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
-import App from '../App.jsx';
+import App from './App.jsx';
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);`
+// Live mount handshake for Zephyre IDE
+if (typeof window !== 'undefined') {
+  window.__zephyre_mounted = true;
+  try {
+    window.parent.postMessage({ source: 'zephyre-preview-mounted' }, '*');
+    var initLoader = document.getElementById('zephyre-initial-loader');
+    if (initLoader) initLoader.remove();
+  } catch (e) {}
+}
+
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  );
+}`
     };
 
     // 5. Ensure /vite.config.js exists with allowedHosts, polling, and HMR

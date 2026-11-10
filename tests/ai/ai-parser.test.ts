@@ -120,4 +120,27 @@ describe("AI Code Generation & LLM JSON Parser", () => {
     expect(files["/package.json"]).toBeDefined();
     expect(files["/src/main.jsx"]).toBeDefined();
   });
+
+  it("should automatically repair truncated arrays and missing named exports across project files", () => {
+    const rawFiles = {
+      "/src/data/mockData.js": {
+        code: `export const INITIAL_MEDIA = [\n  { id: '1', title: 'Movie 1' },\n  { id: '2', title: 'Movie 2' }`,
+      },
+      "/src/components/AICineMind.jsx": {
+        code: `import React from 'react';\nimport { MOOD_CATEGORIES } from '../data/mockData';\nexport function AICineMind() { return null; }`,
+      },
+      "/src/components/TruncatedCard.jsx": {
+        code: `export function TruncatedCard() {\n  return <div className="card" size=`,
+      },
+    };
+
+    const { files } = ensureStandardFiles(rawFiles, {}, "Streaming App");
+
+    // Array should be auto-closed with ];
+    expect(files["/src/data/mockData.js"].code).toContain("];");
+    // MOOD_CATEGORIES should be auto-exported as a fallback
+    expect(files["/src/data/mockData.js"].code).toContain("export const MOOD_CATEGORIES =");
+    // Truncated size= should be stripped and closed cleanly
+    expect(files["/src/components/TruncatedCard.jsx"].code).not.toContain("size=");
+  });
 });
