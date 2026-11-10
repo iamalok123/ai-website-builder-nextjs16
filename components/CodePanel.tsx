@@ -507,7 +507,9 @@ export default defineConfig({
     useEffect(() => {
         if (!sandboxId || !previewUrl || isGenerating || isStartingSandbox) return;
 
+        let isCancelled = false;
         const checkHealth = async () => {
+            if (isCancelled) return;
             try {
                 const res = await fetch("/api/sandbox", {
                     method: "POST",
@@ -515,6 +517,8 @@ export default defineConfig({
                     body: JSON.stringify({ action: "health", sandboxId }),
                 });
                 const data = await res.json();
+                if (isCancelled) return;
+
                 if (!res.ok) {
                     if (res.status === 404 || data.code === "SANDBOX_EXPIRED") {
                         console.warn("[CodePanel] Sandbox expired during health check, reviving...");
@@ -532,8 +536,15 @@ export default defineConfig({
             } catch {}
         };
 
-        const timer = setTimeout(checkHealth, 5000);
-        return () => clearTimeout(timer);
+        // Dual-pass health check (3s and 10s) to auto-heal cold boots and transient 502s
+        const timer1 = setTimeout(checkHealth, 3000);
+        const timer2 = setTimeout(checkHealth, 10000);
+
+        return () => {
+            isCancelled = true;
+            clearTimeout(timer1);
+            clearTimeout(timer2);
+        };
     }, [sandboxId, previewUrl, isGenerating, isStartingSandbox]);
 
     // Resolve code of selected file with leading-slash tolerance

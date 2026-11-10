@@ -141,19 +141,19 @@
 
 @keyframes marquee {
   0% {
-    transform: translateX(0%);
+    transform: translate3d(0, 0, 0);
   }
   100% {
-    transform: translateX(-50%);
+    transform: translate3d(-50%, 0, 0);
   }
 }
 
 @keyframes marquee-reverse {
   0% {
-    transform: translateX(-50%);
+    transform: translate3d(-50%, 0, 0);
   }
   100% {
-    transform: translateX(0%);
+    transform: translate3d(0, 0, 0);
   }
 }
 
@@ -176,6 +176,13 @@
 .marquee-group:hover .animate-marquee-scroll,
 .marquee-group:hover .animate-marquee-scroll-reverse {
   animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee-scroll,
+  .animate-marquee-scroll-reverse {
+    animation-play-state: paused;
+  }
 }
 
 /* Sandpack layout & full height overrides */

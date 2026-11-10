@@ -173,6 +173,7 @@ export default defineConfig({
     watch: {
       usePolling: true,
       interval: 100,
+      ignored: ['**/node_modules/**', '**/.git/**'],
     },
     hmr: {
       clientPort: 443,
@@ -847,14 +848,22 @@ export async function writeFilesToSandbox(
         }
         delete normalizedFiles["public/index.html"];
 
-        // Ensure main.jsx entry point exists and attaches HMR compilation error reporting
-        const mainJsx = normalizedFiles["src/main.jsx"] || normalizedFiles["main.jsx"];
-        if (!mainJsx) {
-            normalizedFiles["src/main.jsx"] = `
+        // Ensure canonical main.jsx with imports at the top, HMR error reporting, and ZephyreErrorBoundary
+        const hasCss = Boolean(
+            normalizedFiles["src/index.css"] ||
+            normalizedFiles["index.css"] ||
+            normalizedFiles["src/App.css"] ||
+            normalizedFiles["App.css"]
+        );
+        const cssImport = hasCss
+            ? (normalizedFiles["src/index.css"] ? "import './index.css';\n" : (normalizedFiles["index.css"] ? "import '../index.css';\n" : ""))
+            : "";
+
+        normalizedFiles["src/main.jsx"] = `
 import React, { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
-
+${cssImport}
 ${ZEPHYRE_HMR_REPORTER_CODE}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -865,13 +874,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </StrictMode>
 );
 `.trim();
-        } else if (!mainJsx.includes("zephyre-preview-error")) {
-            let wrappedJsx = mainJsx;
-            if (!wrappedJsx.includes("ZephyreErrorBoundary")) {
-                wrappedJsx = wrappedJsx.replace(/<App\s*\/>/g, "<ZephyreErrorBoundary><App /></ZephyreErrorBoundary>");
-            }
-            normalizedFiles["src/main.jsx"] = `${ZEPHYRE_HMR_REPORTER_CODE}\n\n${wrappedJsx}`;
-        }
+        delete normalizedFiles["main.jsx"];
 
         // Ensure package.json exists and is normalized
         const rawPkgCode = normalizedFiles["package.json"];
@@ -1050,7 +1053,7 @@ export async function startSandboxApp(
         );
         // Start Vite dev server explicitly on port 3000 with local binary priority and supervisor
         await sandbox.commands.run(
-            `cd ${baseDir} && (nohup bash -c 'while true; do (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &)`
+            `cd ${baseDir} && (nohup bash -c 'while true; do env NODE_OPTIONS="--max-old-space-size=384" (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &)`
         );
     }
 
@@ -1073,13 +1076,13 @@ export async function startSandboxApp(
         console.warn("[E2B] Dev server initial warm-up notice, executing kickstart...");
         try {
             await sandbox.commands.run(
-                `cd ${baseDir} && (nohup bash -c '(./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1' > /dev/null 2>&1 &)`
+                `cd ${baseDir} && (nohup bash -c 'env NODE_OPTIONS="--max-old-space-size=384" (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1' > /dev/null 2>&1 &)`
             );
             await sandbox.commands.run(
                 `for i in $(seq 1 20); do
                     if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1; then exit 0; fi
                     sleep 0.5
-                done; exit 0`,
+                done; exit 1`,
                 { timeoutMs: 12_000 }
             );
             isReady = true;
@@ -1091,9 +1094,7 @@ export async function startSandboxApp(
     if (!isReady) {
         const log = await sandbox.commands.run("tail -n 25 /tmp/dev-server.log 2>&1 || true").catch(() => null);
         const logText = log?.stdout?.trim() || "";
-        if (logText.includes("error") || logText.includes("failed") || logText.includes("Cannot find")) {
-            throw new Error(`Development server failed to boot: ${logText.slice(0, 300)}`);
-        }
+        throw new Error(`Development server failed to boot on port 3000: ${logText.slice(0, 300) || "Port 3000 connection refused"}`);
     }
 
     // Port 3000 is the standard preview port

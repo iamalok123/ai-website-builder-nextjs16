@@ -1,20 +1,20 @@
 import { Sparkles, Zap, Code2, Eye, Package, ImageIcon } from "lucide-react";
 
 export const SUGGESTIONS = [
-    { text: "A Spotify stats dashboard with charts & audio visualizer", tag: "Music", icon: "🎵" },
+    { text: "A modern SaaS analytics dashboard with interactive metrics & charts", tag: "Dashboard", icon: "📊" },
     { text: "A kanban task board with drag & drop and analytics", tag: "Productivity", icon: "📋" },
     { text: "A weather app with 3D animated radar & forecast cards", tag: "Dashboard", icon: "⛅" },
     { text: "A personal finance tracker with monthly budget breakdowns", tag: "Finance", icon: "💰" },
     { text: "A recipe finder with AI nutrition macro calculation", tag: "Health", icon: "🍳" },
-    { text: "A pomodoro productivity timer with custom soundscapes", tag: "Tools", icon: "⏱️" },
+    { text: "A pomodoro productivity timer with focus sprints and daily stats", tag: "Tools", icon: "⏱️" },
     { text: "An AI landing page builder with live theme toggle", tag: "AI App", icon: "🚀" },
     { text: "A ChatGPT clone with custom system prompts & model picker", tag: "AI App", icon: "🤖" },
     { text: "A real-time crypto & stock market portfolio dashboard", tag: "Finance", icon: "📈" },
     { text: "A habit streak tracker with GitHub-style heatmaps", tag: "Productivity", icon: "🧘" },
     { text: "An e-commerce storefront with cart & instant checkout", tag: "E-Commerce", icon: "🛒" },
-    { text: "A retro pixel arcade game with high scores & sound FX", tag: "Gaming", icon: "🎮" },
+    { text: "A retro pixel arcade game with high scores & leaderboards", tag: "Gaming", icon: "🎮" },
     { text: "A markdown note-taking app with split-screen live preview", tag: "Developer", icon: "📝" },
-    { text: "A lo-fi ambient audio player with audio visualizer", tag: "Audio", icon: "🎧" },
+    { text: "A customer feedback board with feature voting & roadmap", tag: "Product", icon: "💡" },
     { text: "A travel itinerary planner & real-time flight search", tag: "Travel", icon: "✈️" },
     { text: "An interactive canvas whiteboard with drawing & export", tag: "Design", icon: "🎨" },
 ];

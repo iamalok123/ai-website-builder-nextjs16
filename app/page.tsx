@@ -121,14 +121,17 @@ export default function Home() {
 
   const handleSuggestion = (s: string) => {
     setPrompt(s);
-    textareaRef.current?.focus();
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+      textareaRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   };
 
   return (
     <main className='min-h-screen bg-black text-white selection:bg-orange-500/30 selection:text-orange-200 overflow-x-clip w-full relative'>
 
       {/* HERO SECTION - HEXAGON BACKGROUND WITH ORANGE THEME & MATCHING INTERFACE */}
-      <section id="hero" className="relative min-h-dvh sm:min-h-0 pt-14 sm:pt-24 pb-8 sm:pb-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex flex-col items-center justify-center w-full overflow-hidden">
+      <section id="hero" className="relative min-h-dvh sm:min-h-0 pt-14 sm:pt-24 pb-8 sm:pb-14 flex flex-col items-center justify-center w-full overflow-hidden">
 
         {/* Ambient Radial Spotlight Glows */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-72 sm:h-112 w-72 sm:w-md rounded-full bg-orange-600/20 blur-[100px] sm:blur-[140px] pointer-events-none" />
@@ -149,7 +152,7 @@ export default function Home() {
         />
 
         {/* Hero Content Wrapper */}
-        <div className="relative w-full flex flex-col items-center text-center justify-center transition-all z-10 pointer-events-none">
+        <div className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col items-center text-center justify-center transition-all z-10 pointer-events-none">
 
           {/* Main Hero Headline */}
           <h1 className="z-10 mx-auto max-w-4xl text-balance font-sans text-[32px] sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.18] sm:leading-[1.08] drop-shadow-sm mb-3 sm:mb-0">
@@ -219,8 +222,8 @@ export default function Home() {
                   </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between border-t border-white/10 pt-3 sm:pt-3 gap-2.5 sm:gap-0">
-                  <div className="flex items-center gap-2.5">
+                <div className="flex items-center justify-between border-t border-white/10 pt-3 gap-2">
+                  <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
                     <AttachmentPlusMenu
                       onSelectFiles={handleFilesSelected}
                       disabled={isAttaching}
@@ -228,81 +231,95 @@ export default function Home() {
                       direction="down"
                     />
 
-                    <span className="text-[11px] sm:text-xs text-zinc-500 text-left hidden sm:inline">
+                    <span className="text-[11px] sm:text-xs text-zinc-500 text-left hidden sm:inline truncate">
                       Press ⏎ to generate · Shift+⏎ for new line
                     </span>
                   </div>
 
-                  {isSignedIn ? (
-                    <Button
-                      onClick={handleSubmit}
-                      disabled={!prompt.trim()}
-                      className="w-full sm:w-auto h-10 rounded-xl px-5 sm:px-6 text-xs sm:text-sm font-semibold bg-linear-to-r from-amber-500 via-orange-500 to-red-500 hover:brightness-110 text-white shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 border-0"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      Generate
-                    </Button>
-                  ) : !isLoaded ? (
-                    <Button
-                      disabled
-                      className="w-full sm:w-auto h-10 rounded-xl px-5 sm:px-6 text-xs sm:text-sm font-semibold bg-linear-to-r from-amber-500/50 via-orange-500/50 to-red-500/50 text-white shadow-lg opacity-70 border-0 cursor-wait flex items-center justify-center gap-2"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      Generate
-                    </Button>
-                  ) : (
-                    <SignInButton mode="modal">
-                      <Button className="w-full sm:w-auto h-10 rounded-xl px-5 sm:px-6 text-xs sm:text-sm font-semibold bg-linear-to-r from-amber-500 via-orange-500 to-red-500 hover:brightness-110 text-white shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] border-0">
-                        <Sparkles className="h-4 w-4" />
-                        Generate
+                  <div className="flex items-center shrink-0">
+                    {isSignedIn ? (
+                      <Button
+                        onClick={handleSubmit}
+                        disabled={!prompt.trim()}
+                        className="h-8 sm:h-8.5 rounded-lg sm:rounded-xl px-3 sm:px-4 text-xs font-semibold bg-linear-to-r from-amber-500 via-orange-500 to-red-500 hover:brightness-110 text-white shadow-md shadow-orange-500/25 flex items-center justify-center gap-1.5 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 border-0 shrink-0"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>Generate</span>
                       </Button>
-                    </SignInButton>
-                  )}
+                    ) : !isLoaded ? (
+                      <Button
+                        disabled
+                        className="h-8 sm:h-8.5 rounded-lg sm:rounded-xl px-3 sm:px-4 text-xs font-semibold bg-linear-to-r from-amber-500/50 via-orange-500/50 to-red-500/50 text-white shadow-md opacity-70 border-0 cursor-wait flex items-center justify-center gap-1.5 shrink-0"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>Generate</span>
+                      </Button>
+                    ) : (
+                      <SignInButton mode="modal">
+                        <Button className="h-8 sm:h-8.5 rounded-lg sm:rounded-xl px-3 sm:px-4 text-xs font-semibold bg-linear-to-r from-amber-500 via-orange-500 to-red-500 hover:brightness-110 text-white shadow-md shadow-orange-500/25 flex items-center justify-center gap-1.5 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] border-0 shrink-0">
+                          <Sparkles className="h-3.5 w-3.5" />
+                          <span>Generate</span>
+                        </Button>
+                      </SignInButton>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
 
-            {/* Interactive Dual Marquee Prompt Suggestions */}
-            <div className="marquee-group relative mt-6 w-full max-w-full overflow-hidden py-2 pointer-events-none space-y-2.5 sm:space-y-3 mask-[linear-gradient(to_right,transparent_0%,black_10%,black_90%,transparent_100%)]">
-              {/* Row 1 - Marquee Scroll Left */}
-              <div className="animate-marquee-scroll flex w-max gap-3 items-center">
-                {[...SUGGESTIONS.slice(0, 8), ...SUGGESTIONS.slice(0, 8), ...SUGGESTIONS.slice(0, 8)].map((item, idx) => (
-                  <button
-                    key={`row1-${item.text}-${idx}`}
-                    onClick={() => handleSuggestion(item.text)}
-                    className="group/item shrink-0 flex items-center gap-2.5 rounded-full border border-orange-500/30 bg-zinc-950/85 px-4 py-2 text-xs font-semibold text-zinc-100 shadow-md backdrop-blur-xl transition-all duration-300 hover:border-orange-400/90 hover:bg-orange-950/70 hover:text-white hover:shadow-[0_0_22px_rgba(249,115,22,0.45)] hover:scale-[1.03] active:scale-[0.97] cursor-pointer whitespace-nowrap pointer-events-auto"
-                  >
-                    <span className="text-sm select-none transition-transform group-hover/item:scale-125 duration-300">{item.icon}</span>
-                    <span className="rounded-md border border-orange-500/30 bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-orange-300 group-hover/item:bg-orange-500/30 group-hover/item:text-orange-200 transition-colors">{item.tag}</span>
-                    <span className="font-medium text-zinc-200 group-hover/item:text-white">{item.text}</span>
-                    <Sparkles className="h-3 w-3 text-orange-400 opacity-0 group-hover/item:opacity-100 transition-opacity -ml-0.5" />
-                  </button>
-                ))}
-              </div>
+        {/* ── INTERACTIVE DUAL MARQUEE PROMPT SUGGESTIONS (FULL WIDTH & DEEP BLACK FADE) ── */}
+        <div className="marquee-group relative mt-6 sm:mt-8 w-full overflow-hidden py-2 pointer-events-auto space-y-2 sm:space-y-2.5 select-none z-20 mask-[linear-gradient(to_right,transparent_0%,black_12%,black_88%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_12%,black_88%,transparent_100%)]">
+          {/* Deep Black Gradient Overlays on Left & Right */}
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-28 sm:w-52 md:w-72 lg:w-96 z-30 bg-linear-to-r from-black via-black/85 to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-28 sm:w-52 md:w-72 lg:w-96 z-30 bg-linear-to-l from-black via-black/85 to-transparent" />
 
-              {/* Row 2 - Marquee Scroll Right */}
-              <div className="animate-marquee-scroll-reverse flex w-max gap-3 items-center">
-                {[...SUGGESTIONS.slice(8), ...SUGGESTIONS.slice(8), ...SUGGESTIONS.slice(8)].map((item, idx) => (
-                  <button
-                    key={`row2-${item.text}-${idx}`}
-                    onClick={() => handleSuggestion(item.text)}
-                    className="group/item shrink-0 flex items-center gap-2.5 rounded-full border border-orange-500/30 bg-zinc-950/85 px-4 py-2 text-xs font-semibold text-zinc-100 shadow-md backdrop-blur-xl transition-all duration-300 hover:border-orange-400/90 hover:bg-orange-950/70 hover:text-white hover:shadow-[0_0_22px_rgba(249,115,22,0.45)] hover:scale-[1.03] active:scale-[0.97] cursor-pointer whitespace-nowrap pointer-events-auto"
-                  >
-                    <span className="text-sm select-none transition-transform group-hover/item:scale-125 duration-300">{item.icon}</span>
-                    <span className="rounded-md border border-orange-500/30 bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-orange-300 group-hover/item:bg-orange-500/30 group-hover/item:text-orange-200 transition-colors">{item.tag}</span>
-                    <span className="font-medium text-zinc-200 group-hover/item:text-white">{item.text}</span>
-                    <Sparkles className="h-3 w-3 text-orange-400 opacity-0 group-hover/item:opacity-100 transition-opacity -ml-0.5" />
-                  </button>
-                ))}
-              </div>
-            </div>
+          {/* Row 1 - Marquee Scroll Right to Left */}
+          <div className="animate-marquee-scroll flex w-max gap-2.5 sm:gap-3 items-center">
+            {[...SUGGESTIONS.slice(0, 8), ...SUGGESTIONS.slice(0, 8)].map((item, idx) => (
+              <button
+                key={`row1-${item.text}-${idx}`}
+                onClick={() => handleSuggestion(item.text)}
+                type="button"
+                className="group/item shrink-0 h-7.5 sm:h-8 flex items-center gap-2 sm:gap-2.5 rounded-full border border-orange-500/25 bg-zinc-950/85 px-3 sm:px-3.5 text-[11px] sm:text-xs font-medium text-zinc-200 shadow-md backdrop-blur-xl transition-all duration-300 hover:border-orange-400/80 hover:bg-zinc-900/95 hover:text-white hover:shadow-[0_0_20px_rgba(249,115,22,0.35)] hover:-translate-y-0.5 hover:scale-[1.015] active:scale-[0.98] cursor-pointer whitespace-nowrap pointer-events-auto"
+              >
+                <span className="text-xs sm:text-sm select-none transition-transform group-hover/item:scale-120 duration-300 shrink-0">
+                  {item.icon}
+                </span>
+                <span className="text-zinc-200 group-hover/item:text-white transition-colors">
+                  {item.text}
+                </span>
+                <ArrowRight className="h-3 w-3 text-orange-400 opacity-0 -translate-x-1.5 group-hover/item:opacity-100 group-hover/item:translate-x-0 transition-all duration-200 ease-out shrink-0" />
+              </button>
+            ))}
           </div>
 
-          <p className="mt-6 sm:mt-6 text-[11px] sm:text-xs text-zinc-400 z-10 font-medium">
-            No credit card required · 10 free generations on sign up
-          </p>
-
+          {/* Row 2 - Marquee Scroll Left to Right */}
+          <div className="animate-marquee-scroll-reverse flex w-max gap-2.5 sm:gap-3 items-center">
+            {[...SUGGESTIONS.slice(8), ...SUGGESTIONS.slice(8)].map((item, idx) => (
+              <button
+                key={`row2-${item.text}-${idx}`}
+                onClick={() => handleSuggestion(item.text)}
+                type="button"
+                className="group/item shrink-0 h-7.5 sm:h-8 flex items-center gap-2 sm:gap-2.5 rounded-full border border-orange-500/25 bg-zinc-950/85 px-3 sm:px-3.5 text-[11px] sm:text-xs font-medium text-zinc-200 shadow-md backdrop-blur-xl transition-all duration-300 hover:border-orange-400/80 hover:bg-zinc-900/95 hover:text-white hover:shadow-[0_0_20px_rgba(249,115,22,0.35)] hover:-translate-y-0.5 hover:scale-[1.015] active:scale-[0.98] cursor-pointer whitespace-nowrap pointer-events-auto"
+              >
+                <span className="text-xs sm:text-sm select-none transition-transform group-hover/item:scale-120 duration-300 shrink-0">
+                  {item.icon}
+                </span>
+                <span className="text-zinc-200 group-hover/item:text-white transition-colors">
+                  {item.text}
+                </span>
+                <ArrowRight className="h-3 w-3 text-orange-400 opacity-0 -translate-x-1.5 group-hover/item:opacity-100 group-hover/item:translate-x-0 transition-all duration-200 ease-out shrink-0" />
+              </button>
+            ))}
+          </div>
         </div>
+
+        <p className="mt-6 sm:mt-7 text-[11px] sm:text-xs text-zinc-400 z-10 font-medium text-center">
+          No credit card required · 10 free generations on sign up
+        </p>
+
       </section>
 
 

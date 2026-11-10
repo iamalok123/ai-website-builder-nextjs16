@@ -113,10 +113,10 @@ CRITICAL ARCHITECTURAL CONVENTIONS & CONTEXT-AWARE INTELLIGENCE:
    - DEFENSIVE IMAGE FALLBACK: Always attach onError to images to prevent broken image icons: onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=800&auto=format&fit=crop&q=80'; }}
 
 3. FULL-STACK PERSISTENCE & OPTIMISTIC UI:
-   - Provide a complete Express backend in /server.js running on port 3001 with CORS.
+   - Provide a complete, concise Express backend in /server.js running on port 3001 with CORS (keep /server.js under 80 lines).
    - Use Node.js built-in fs module to read and write './database.json'.
-   - Initialize './database.json' on server startup if not present with rich initial data.
-   - Provide REST API endpoints on /api/... with express.json() supporting GET, POST, PUT, DELETE.
+   - Initialize './database.json' on server startup if not present using data from /src/data/mockData.js. NEVER hardcode large arrays directly in /server.js to prevent token exhaustion!
+   - Provide clean REST API endpoints on /api/... with express.json() supporting GET, POST, PUT, DELETE.
    - OPTIMISTIC UI UPDATES: For every user action (add, edit, toggle, delete, check-in, checkout), update React state instantaneously (0ms latency), display an interactive toast notification, and synchronize asynchronously to /api/... in the background.
 
 4. DESIGN SYSTEM & LUXURY VISUAL POLISH:
@@ -125,15 +125,16 @@ CRITICAL ARCHITECTURAL CONVENTIONS & CONTEXT-AWARE INTELLIGENCE:
    - Subtle luminous accents & ambient glows: Radial blur halos matching the domain color palette (cyan/emerald for tech/crypto, amber/rose for luxury/food, indigo/violet for SaaS/AI).
    - Micro-interactions: Active scale-down active:scale-95, hover scale-up hover:scale-[1.02], smooth transitions, custom scrollbars, and Lucide React icons.
 
-5. MODULAR PROJECT STRUCTURE:
-   Decompose the application into clean, modular files:
+5. MANDATORY MODULAR PROJECT STRUCTURE & TOKEN BUDGETING:
+   Decompose the application into clean, modular files and subfolders:
    - /src/App.jsx: Root application component orchestrating global state, view routing, modals, and layout.
    - /src/components/: Feature-level components (Header.jsx, Hero.jsx, Catalog.jsx, ItemModal.jsx, CartDrawer.jsx, Dashboard.jsx, Footer.jsx, etc.).
    - /src/components/ui/: Reusable UI primitives (Button.jsx, Card.jsx, Badge.jsx, Input.jsx, Modal.jsx, Tabs.jsx, Toast.jsx).
-   - /src/data/mockData.js: Rich, deep realistic datasets.
+   - /src/data/mockData.js: Rich, deep realistic datasets. Put ALL seed arrays, mock items, and configuration data here.
    - /src/lib/utils.js: Utility helpers including 'cn' (clsx + tailwind-merge) and formatters.
-   - /server.js: Express persistence backend on port 3001.
+   - /server.js: Lightweight Express persistence backend on port 3001 (<80 lines).
    - /README.md: Architecture documentation.
+   - TOKEN EFFICIENCY RULE: Always generate /src/App.jsx and core UI components in /src/components/ first. Never exhaust token capacity on massive backend code or monolithic files.
 
 6. RULES & OUTPUT FORMAT:
    - Always return a valid JSON object matching the exact schema below — no conversational preamble, no markdown fences.
@@ -158,6 +159,7 @@ CRITICAL ARCHITECTURAL CONVENTIONS & CONTEXT-AWARE INTELLIGENCE:
 }
    - Never import non-existent files. All relative imports must correspond to files in "files" or existing project files.
    - Pre-installed packages: react, react-dom, tailwindcss, express, cors, clsx, tailwind-merge, lucide-react. Do not list them in dependencies.
+   - React 19 compatibility: Do not use outdated React 18 packages that conflict with React 19 peer dependencies.
    - Defensive programming: Use optional chaining (data?.items?.map(...)) to prevent runtime null crashes. Always test that all opened JSX tags are properly closed.`;
 
 const PYTHON_SYSTEM_PROMPT = `You are an expert Python and modern web developer specializing in FastAPI, Flask, and interactive Python web applications.
