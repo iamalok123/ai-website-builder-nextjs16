@@ -96,6 +96,182 @@ export function parseRawError(raw: unknown): ErrorInfo {
 }
 
 /**
+ * Resolves a relative import path like "../lib/utils" from "/src/components/Foo.jsx"
+ * to normalized path candidates like "src/lib/utils".
+ */
+function resolveRelativeImportCandidates(importerPath: string, relImport: string): string[] {
+    const cleanImporter = normalizePath(importerPath);
+    const dirParts = cleanImporter.includes("/") ? cleanImporter.split("/").slice(0, -1) : [];
+    const relParts = relImport.split("/");
+    const resolved = [...dirParts];
+    for (const part of relParts) {
+        if (!part || part === ".") continue;
+        if (part === "..") resolved.pop();
+        else resolved.push(part);
+    }
+    const base = resolved.join("/");
+    const stripped = relImport.replace(/^(?:\.\.?\/)+/, "");
+    return [
+        base,
+        `${base}.jsx`,
+        `${base}.js`,
+        `${base}.tsx`,
+        `${base}.ts`,
+        `${base}/index.jsx`,
+        `${base}/index.js`,
+        stripped,
+        `${stripped}.jsx`,
+        `${stripped}.js`,
+        `src/${stripped}`,
+        `src/${stripped}.jsx`,
+        `src/${stripped}.js`,
+    ];
+}
+
+/**
+ * Lightweight client-safe scanner that checks every file in the workspace for
+ * obvious truncation, unbalanced delimiters, invalid JSON, or incomplete HTML docs.
+ */
+export function findSuspiciousProjectFiles(
+    fileData: FileData
+): { path: string; reason: string; code: string }[] {
+    const issues: { path: string; reason: string; code: string }[] = [];
+    const allFiles = fileData.files || {};
+
+    for (const [path, fileObj] of Object.entries(allFiles)) {
+        const code = fileObj?.code;
+        if (typeof code !== "string") continue;
+        const lower = path.toLowerCase();
+
+        if (lower.endsWith(".json")) {
+            try {
+                JSON.parse(code);
+            } catch {
+                issues.push({ path, reason: "Invalid JSON syntax", code });
+            }
+            continue;
+        }
+
+        if (
+            !lower.endsWith(".js") &&
+            !lower.endsWith(".jsx") &&
+            !lower.endsWith(".ts") &&
+            !lower.endsWith(".tsx")
+        ) {
+            continue;
+        }
+
+        if ((lower.endsWith("/src/app.jsx") || lower.endsWith("/app.jsx")) && !code.trim()) {
+            issues.push({ path, reason: "Empty root App component", code });
+            continue;
+        }
+
+        if ((/<!DOCTYPE\s+html/i.test(code) || /<html[\s>]/i.test(code)) && !/<\/html>/i.test(code)) {
+            issues.push({ path, reason: "Incomplete HTML template literal (missing </html>)", code });
+            continue;
+        }
+
+        if (/\breturn\s*\(\s*(?:null)?\s*\)\s*;?\s*\}$/.test(code.trimEnd())) {
+            issues.push({ path, reason: "Truncated JSX return block", code });
+            continue;
+        }
+
+        // Fast bracket/brace/paren/template parity scan ignoring comments & string literals
+        const stack: string[] = [];
+        let inStr: string | null = null;
+        let inLineComment = false;
+        let inBlockComment = false;
+        let mismatchReason: string | null = null;
+
+        for (let i = 0; i < code.length; i++) {
+            const ch = code[i];
+            const next = code[i + 1] ?? "";
+            if (inLineComment) {
+                if (ch === "\n") inLineComment = false;
+                continue;
+            }
+            if (inBlockComment) {
+                if (ch === "*" && next === "/") {
+                    inBlockComment = false;
+                    i++;
+                }
+                continue;
+            }
+            if (inStr) {
+                if (ch === "\\") {
+                    i++;
+                    continue;
+                }
+                if (inStr === "`" && ch === "$" && next === "{") {
+                    stack.push("${");
+                    inStr = null;
+                    i++;
+                    continue;
+                }
+                if (ch === inStr) {
+                    inStr = null;
+                    continue;
+                }
+                if ((inStr === "'" || inStr === '"') && ch === "\n") {
+                    inStr = null;
+                }
+                continue;
+            }
+            if (ch === "/" && next === "/") {
+                inLineComment = true;
+                i++;
+                continue;
+            }
+            if (ch === "/" && next === "*") {
+                inBlockComment = true;
+                i++;
+                continue;
+            }
+            if (ch === "'" || ch === '"' || ch === "`") {
+                if (ch === "'" && i > 0 && /[A-Za-z]/.test(code[i - 1]) && /[A-Za-z]/.test(next)) {
+                    continue;
+                }
+                inStr = ch;
+                continue;
+            }
+            if (ch === "{" || ch === "[" || ch === "(") {
+                stack.push(ch);
+            } else if (ch === "}") {
+                const top = stack.pop();
+                if (top === "${") {
+                    inStr = "`";
+                } else if (top !== "{") {
+                    mismatchReason = `Mismatched brace '}' (expected closing for '${top || "none"}')`;
+                    break;
+                }
+            } else if (ch === "]") {
+                const top = stack.pop();
+                if (top !== "[") {
+                    mismatchReason = `Mismatched bracket ']' (expected closing for '${top || "none"}')`;
+                    break;
+                }
+            } else if (ch === ")") {
+                const top = stack.pop();
+                if (top !== "(") {
+                    mismatchReason = `Mismatched parenthesis ')' (expected closing for '${top || "none"}')`;
+                    break;
+                }
+            }
+        }
+
+        if (mismatchReason) {
+            issues.push({ path, reason: mismatchReason, code });
+        } else if (inStr === "`") {
+            issues.push({ path, reason: "Unclosed template literal", code });
+        } else if (stack.length > 0) {
+            issues.push({ path, reason: `Unclosed delimiters: ${stack.join(", ")}`, code });
+        }
+    }
+
+    return issues;
+}
+
+/**
  * Finds all connected files for a target broken file:
  * - The broken file itself
  * - Files imported by the broken file (relative imports)
@@ -143,21 +319,7 @@ export function getConnectedFiles(
         const importRegex = /(?:import|export)\s+(?:.*?from\s+)?['"](\.[^'"]+)['"]/g;
         let match;
         while ((match = importRegex.exec(primary[1])) !== null) {
-            const rawImport = match[1];
-            // Resolve relative import to potential file names (.jsx, .js, .tsx, .ts, etc.)
-            const base = rawImport.replace(/^\.\//, "");
-            const candidates = [
-                base,
-                `${base}.jsx`,
-                `${base}.js`,
-                `${base}.tsx`,
-                `${base}.ts`,
-                `src/${base}`,
-                `src/${base}.jsx`,
-                `src/${base}.js`,
-                `components/${base}`,
-                `components/${base}.jsx`,
-            ];
+            const candidates = resolveRelativeImportCandidates(primary[0], match[1]);
             for (const cand of candidates) {
                 const found = findFile(cand);
                 if (found && !result[found[0]]) {
@@ -197,6 +359,9 @@ export function buildErrorFixPrompt(
 ): string {
     const error = parseRawError(rawError);
     const connected = getConnectedFiles(fileData, error.file);
+    const additionalBroken = findSuspiciousProjectFiles(fileData).filter(
+        (issue) => !connected[issue.path]
+    );
 
     const locationText = error.file
         ? `${error.file}${error.line ? ` (Line ${error.line}${error.column ? `, Column ${error.column}` : ""})` : ""}`
@@ -222,14 +387,22 @@ Error Message: ${error.message}
         prompt += `\n--- ${filePath} ---\n\`\`\`${filePath.endsWith(".json") ? "json" : "jsx"}\n${code}\n\`\`\`\n`;
     }
 
+    if (additionalBroken.length > 0) {
+        prompt += `\n⚠️ ADDITIONAL CORRUPTED OR TRUNCATED FILES DETECTED IN PROJECT (MUST ALSO BE FIXED):\n`;
+        for (const issue of additionalBroken) {
+            prompt += `\n--- ${issue.path} (${issue.reason}) ---\n\`\`\`${issue.path.endsWith(".json") ? "json" : "jsx"}\n${issue.code}\n\`\`\`\n`;
+        }
+    }
+
     prompt += `
 CRITICAL FIX INSTRUCTIONS:
-1. Pinpoint the exact syntax, import, or runtime issue indicated by the error code frame and line number.
+1. Pinpoint the exact syntax, truncation, import, or runtime issue indicated by the error code frame AND inspect all other listed broken/truncated files above.
+   - If any function, JSX block, HTML template string, or object/array was cut off or closed with mismatched brackets, restore the complete valid implementation without placeholders.
    - For missing semicolon or unexpected token in imports (e.g. missing commas in import lists like "{ IconA IconB } from 'lucide-react'"), fix the syntax cleanly.
    - For missing components or unexported symbols, ensure they are properly exported or imported.
    - For Tailwind template literals, strictly format them as: className={\`my-class \${variable}\`}.
-2. Only modify the specific lines necessary to fix the error; keep all existing features, styling, state, and functionality 100% intact.
-3. Return the complete corrected file(s) in JSON format so the application compiles and renders without errors.`;
+2. Keep all existing features, styling, state, and working components 100% intact. Do NOT redesign or rewrite unbroken files unnecessarily.
+3. Return FULL complete corrected "code" (NOT "patches") in valid JSON format for EVERY file that needed fixing, properly escaping all inner double quotes as \\" inside JSON strings.`;
 
     return prompt;
 }

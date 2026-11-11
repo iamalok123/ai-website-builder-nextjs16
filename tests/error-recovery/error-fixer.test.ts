@@ -6,7 +6,9 @@ import {
     formatErrorFixDisplay,
     isDiagnosticPrompt,
     extractDiagnosticSummary,
+    findSuspiciousProjectFiles,
 } from "@/lib/error-fixer";
+import { DIAGNOSTIC_FIX_SYSTEM_PROMPT, getSystemPrompt, buildSyntaxRepairPrompt } from "@/lib/ai-prompts";
 import type { FileData } from "@/types/workspace";
 
 describe("Error Recovery & Diagnostic Parser", () => {
@@ -154,5 +156,55 @@ CRITICAL FIX INSTRUCTIONS:`;
         expect(summary.category).toBe("compile");
         expect(summary.message).toBe("Missing semicolon. (26:6)");
         expect(summary.title).toContain("One-Click Auto-Fix");
+    });
+
+    it("should detect additional corrupted sibling files and route diagnostic prompts cleanly", () => {
+        const fileData: FileData = {
+            title: "VS Code Web Studio",
+            dependencies: {},
+            files: {
+                "/src/App.jsx": {
+                    code: `import BottomPanel from './components/BottomPanel';\nexport default function App() {\n  const x = [{ msg: 'hi')\n];\n}`,
+                },
+                "/src/components/BottomPanel.jsx": {
+                    code: `export default function BottomPanel() {\n  const h = [{ text: 'Type')\n];\n}\n}`,
+                },
+                "/src/lib/utils.js": {
+                    code: `export function buildPreview() {\n  return \`<!DOCTYPE html><html><head>\`;\n}`,
+                },
+            },
+        };
+
+        const issues = findSuspiciousProjectFiles(fileData);
+        const issuePaths = issues.map((i) => i.path);
+        expect(issuePaths).toContain("/src/App.jsx");
+        expect(issuePaths).toContain("/src/components/BottomPanel.jsx");
+        expect(issuePaths).toContain("/src/lib/utils.js");
+
+        const prompt = buildErrorFixPrompt(
+            `[plugin:vite:react-babel] /home/user/app/src/App.jsx: Unexpected token, expected "," (3:25)`,
+            fileData
+        );
+        expect(prompt).toContain("ADDITIONAL CORRUPTED OR TRUNCATED FILES DETECTED");
+        expect(prompt).toContain("/src/lib/utils.js");
+        expect(prompt).toContain('Return FULL complete corrected "code" (NOT "patches")');
+
+        // Even if JS/JSX diagnostic context contains the word "python" (e.g. a code editor language list),
+        // getSystemPrompt must route React diagnostic prompts to DIAGNOSTIC_FIX_SYSTEM_PROMPT.
+        const selectedSystem = getSystemPrompt(
+            [
+                { role: "user", content: "Build a VS Code Web Studio supporting js, css, and python highlighting" },
+                { role: "user", content: prompt },
+            ],
+            fileData
+        );
+        expect(selectedSystem).toBe(DIAGNOSTIC_FIX_SYSTEM_PROMPT);
+
+        const repairMsg = buildSyntaxRepairPrompt(
+            [{ path: "/src/App.jsx", line: 3, column: 25, message: 'Unexpected token, expected ","' }],
+            fileData.files
+        );
+        expect(repairMsg).toContain("/src/App.jsx");
+        expect(repairMsg).toContain('Unexpected token, expected ","');
     });
 });

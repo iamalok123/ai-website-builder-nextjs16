@@ -233,10 +233,32 @@ export function CodePanel({
     const [showErrorDetails, setShowErrorDetails] = useState(false);
     const [isFixingError, setIsFixingError] = useState(false);
     const [isInspectorActive, setIsInspectorActive] = useState(false);
+    const previewErrorRef = useRef<ErrorInfo | null>(null);
+    const previewUrlRef = useRef<string | null>(null);
+    const pendingFixSyncRef = useRef(false);
+    const postFixReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => {
+        previewErrorRef.current = previewError;
+    }, [previewError]);
+    useEffect(() => {
+        previewUrlRef.current = previewUrl;
+    }, [previewUrl]);
+    useEffect(() => {
+        return () => {
+            if (postFixReloadTimerRef.current) {
+                clearTimeout(postFixReloadTimerRef.current);
+            }
+        };
+    }, []);
     const fileDataRef = useRef(fileData);
     useEffect(() => {
         fileDataRef.current = fileData;
     }, [fileData]);
+    const sandboxIdRef = useRef<string | null>(sandboxId);
+    useEffect(() => {
+        sandboxIdRef.current = sandboxId;
+    }, [sandboxId]);
+    const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const startSandboxRef = useRef<(data: FileData, prevId?: string | null) => Promise<void>>(() => Promise.resolve());
 
     // Listen for live compile & runtime error events and inspector selections
@@ -247,9 +269,17 @@ export function CodePanel({
                 const parsed = parseRawError(event.data);
                 setPreviewError(parsed);
             } else if (event.data.source === "zephyre-preview-clear") {
+                if (postFixReloadTimerRef.current) {
+                    clearTimeout(postFixReloadTimerRef.current);
+                    postFixReloadTimerRef.current = null;
+                }
                 setPreviewError(null);
                 setShowErrorDetails(false);
             } else if (event.data.source === "zephyre-preview-mounted") {
+                if (postFixReloadTimerRef.current) {
+                    clearTimeout(postFixReloadTimerRef.current);
+                    postFixReloadTimerRef.current = null;
+                }
                 setIsIframeLoading(false);
                 setPreviewError(null);
             } else if (event.data.source === "zephyre-request-restart") {
@@ -299,11 +329,13 @@ export function CodePanel({
     const handleFixActiveError = useCallback(async () => {
         if (!activeError || !fileData) return;
         setIsFixingError(true);
+        pendingFixSyncRef.current = true;
         try {
             const prompt = buildErrorFixPrompt(activeError, fileData);
             const display = formatErrorFixDisplay(activeError);
             await onFixError(prompt, display);
         } catch (err) {
+            pendingFixSyncRef.current = false;
             console.error("[CodePanel] Fix error failed:", err);
             toast.error("Auto-fix failed. Please try again.");
         } finally {
@@ -311,7 +343,6 @@ export function CodePanel({
         }
     }, [activeError, fileData, onFixError]);
 
-    const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
 
     // De-duplicate files: If /src/App.jsx exists, suppress any legacy root /App.jsx
@@ -396,15 +427,12 @@ export default defineConfig({
 
     // ─── E2B Sandbox Lifecycle: Start or Sync ─────────────────────────────────────
     const isStartingRef = useRef(false);
-    const sandboxIdRef = useRef<string | null>(sandboxId);
-    useEffect(() => {
-        sandboxIdRef.current = sandboxId;
-    }, [sandboxId]);
 
     const startSandbox = useCallback(async (data: FileData, previousId?: string | null) => {
         if (!data.files || Object.keys(data.files).length === 0) return;
         if (isStartingRef.current) return;
         isStartingRef.current = true;
+        pendingFixSyncRef.current = false;
 
         setIsStartingSandbox(true);
         setSandboxError(null);
@@ -465,6 +493,20 @@ export default defineConfig({
                     console.warn("[CodePanel] Sandbox expired or unreachable, resetting for automatic re-boot...");
                     setSandboxId(null);
                 }
+            } else if (pendingFixSyncRef.current || previewErrorRef.current?.category === "compile") {
+                pendingFixSyncRef.current = false;
+                if (postFixReloadTimerRef.current) {
+                    clearTimeout(postFixReloadTimerRef.current);
+                }
+                // Give Vite HMR 1200ms to clear/remount naturally; if still stuck on a fatal boot error, soft-reload iframe
+                postFixReloadTimerRef.current = setTimeout(() => {
+                    postFixReloadTimerRef.current = null;
+                    const currentUrl = previewUrlRef.current;
+                    if (iframeRef.current && currentUrl && previewErrorRef.current) {
+                        const sep = currentUrl.includes("?") ? "&" : "?";
+                        iframeRef.current.src = `${currentUrl}${sep}_fix=${Date.now()}`;
+                    }
+                }, 1200);
             }
         } catch (err) {
             console.warn("[CodePanel] Failed to sync files to sandbox:", err);
@@ -1082,11 +1124,12 @@ export default defineConfig({
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={() => onFixError(sandboxError)}
+                                            disabled={isGenerating || isImproving || isFixingError}
+                                            onClick={handleFixActiveError}
                                             className="h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10"
                                         >
                                             <Bot className="h-3.5 w-3.5 mr-1.5" />
-                                            Fix with AI
+                                            {isFixingError ? "Fixing…" : "Fix with AI"}
                                         </Button>
                                     </div>
                                 </div>

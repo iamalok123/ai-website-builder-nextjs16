@@ -1,3 +1,4 @@
+import * as babelParser from "@babel/parser";
 import { jsonrepair } from "jsonrepair";
 import { STANDARD_VITE_CONFIG, ZEPHYRE_ERROR_BRIDGE_SCRIPT } from "./e2b";
 
@@ -286,43 +287,339 @@ export function applyFileChanges(
     return normalizeFilePaths(result);
 }
 
+export interface FileSyntaxError {
+    path: string;
+    message: string;
+    line?: number;
+    column?: number;
+}
+
 /**
- * Fallback regex extractor for severely truncated or malformed LLM responses.
- * Recovers whatever files and properties were successfully generated.
+ * Checks whether a JavaScript/JSX/TypeScript snippet parses cleanly using Babel's parser
+ * (matching Vite's @vitejs/plugin-react AST parser).
+ */
+export function isJsSyntaxValid(code: string, filePath = "/file.jsx"): boolean {
+    if (typeof code !== "string") return false;
+    try {
+        const lower = filePath.toLowerCase();
+        const plugins: babelParser.ParserPlugin[] = lower.endsWith(".tsx")
+            ? ["typescript", "jsx"]
+            : lower.endsWith(".ts")
+            ? ["typescript"]
+            : ["jsx"];
+        babelParser.parse(code, { sourceType: "unambiguous", plugins });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Validates syntax and structural completeness of all code/JSON files in a workspace.
+ * Uses @babel/parser for JS/JSX/TS/TSX and JSON.parse for .json files.
+ */
+export function validateProjectSyntax(
+    files: Record<string, { code: string }>
+): FileSyntaxError[] {
+    const errors: FileSyntaxError[] = [];
+
+    for (const [path, fileObj] of Object.entries(files || {})) {
+        const code = fileObj?.code;
+        if (typeof code !== "string") continue;
+        const lower = path.toLowerCase();
+
+        if (lower.endsWith(".json")) {
+            try {
+                JSON.parse(code);
+            } catch (err: unknown) {
+                errors.push({
+                    path,
+                    message: err instanceof Error ? err.message : "Invalid JSON syntax",
+                });
+            }
+            continue;
+        }
+
+        if (
+            lower.endsWith(".js") ||
+            lower.endsWith(".jsx") ||
+            lower.endsWith(".mjs") ||
+            lower.endsWith(".cjs") ||
+            lower.endsWith(".ts") ||
+            lower.endsWith(".tsx")
+        ) {
+            if ((lower.endsWith("/src/app.jsx") || lower.endsWith("/app.jsx")) && !code.trim()) {
+                errors.push({ path, message: "Empty application entry file" });
+                continue;
+            }
+
+            try {
+                const plugins: babelParser.ParserPlugin[] = lower.endsWith(".tsx")
+                    ? ["typescript", "jsx"]
+                    : lower.endsWith(".ts")
+                    ? ["typescript"]
+                    : ["jsx"];
+                babelParser.parse(code, { sourceType: "unambiguous", plugins });
+            } catch (err: unknown) {
+                const bErr = err as { message?: string; loc?: { line?: number; column?: number } };
+                errors.push({
+                    path,
+                    message: bErr?.message || "Syntax error",
+                    line: bErr?.loc?.line,
+                    column: bErr?.loc?.column,
+                });
+                continue;
+            }
+
+            // Catch truncated HTML template literals embedded inside JS helpers (e.g., buildPreviewDocument)
+            if ((/<!DOCTYPE\s+html/i.test(code) || /<html[\s>]/i.test(code)) && !/<\/html>/i.test(code)) {
+                errors.push({
+                    path,
+                    message: "Incomplete HTML document string detected (missing closing </html>)",
+                });
+            }
+        }
+    }
+
+    return errors;
+}
+
+/**
+ * Normalizes a potentially loose JSON string body (which may contain unescaped double-quotes
+ * or literal newlines/tabs from LLM code generation) into valid JSON-escaped text and decodes it.
+ */
+function decodeLooseJsonString(rawContent: string): string {
+    let sanitized = "";
+    const len = rawContent.length;
+
+    for (let i = 0; i < len; i++) {
+        const ch = rawContent[i];
+
+        if (ch === "\\") {
+            if (i + 1 >= len) {
+                // Dangling backslash right at stream truncation
+                break;
+            }
+            const next = rawContent[i + 1];
+            if (next === '"' || next === "\\" || next === "/" || next === "b" || next === "f" || next === "n" || next === "r" || next === "t") {
+                sanitized += "\\" + next;
+                i++;
+                continue;
+            }
+            if (next === "u" && i + 5 < len && /^[0-9a-fA-F]{4}$/.test(rawContent.slice(i + 2, i + 6))) {
+                sanitized += rawContent.slice(i, i + 6);
+                i += 5;
+                continue;
+            }
+            // Non-JSON escape (e.g., \s, \d, \$, \'): preserve literal backslash + char
+            sanitized += "\\\\" + next;
+            i++;
+            continue;
+        }
+
+        if (ch === '"') {
+            sanitized += '\\"';
+        } else if (ch === "\n") {
+            sanitized += "\\n";
+        } else if (ch === "\r") {
+            sanitized += "\\r";
+        } else if (ch === "\t") {
+            sanitized += "\\t";
+        } else if (ch.charCodeAt(0) < 0x20) {
+            // Strip other ASCII control chars
+        } else {
+            sanitized += ch;
+        }
+    }
+
+    try {
+        return JSON.parse(`"${sanitized}"`);
+    } catch {
+        return rawContent
+            .replace(/\\n/g, "\n")
+            .replace(/\\r/g, "\r")
+            .replace(/\\t/g, "\t")
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, "\\");
+    }
+}
+
+/**
+ * Extracts a top-level metadata string field ("assistantMessage" or "title") structurally,
+ * surviving internal unescaped double quotes.
+ */
+function extractTopLevelStringField(raw: string, fieldName: string, fallback: string): string {
+    const startMatch = new RegExp(`(?:^|[^\\\\])"${fieldName}"\\s*:\\s*"`).exec(raw);
+    if (!startMatch) return fallback;
+
+    const valueStart = startMatch.index + startMatch[0].length;
+    const after = raw.slice(valueStart);
+    const endMatch = after.match(/"\s*(?:,\s*"(?:assistantMessage|title|files|dependencies)"\s*:|\s*\})/);
+    if (endMatch && endMatch.index !== undefined) {
+        return decodeLooseJsonString(after.slice(0, endMatch.index));
+    }
+
+    const basicMatch = after.match(/^((?:[^"\\]|\\.)*)"/);
+    return basicMatch ? decodeLooseJsonString(basicMatch[1]) : fallback;
+}
+
+/**
+ * Extracts patches array entries even if individual search/replace strings had unescaped quotes.
+ */
+function extractPatchesFromSegment(segment: string): FilePatch[] {
+    const trimmed = segment.replace(/\s*\}\s*,?(?:\s*\}\s*,?)?\s*$/, "").trim();
+    const arrayCandidate = `[${trimmed.endsWith("]") ? trimmed : trimmed + "]"}`;
+    try {
+        const direct = JSON.parse(arrayCandidate);
+        if (Array.isArray(direct)) {
+            return direct.filter((p) => p && typeof p.search === "string" && typeof p.replace === "string");
+        }
+    } catch {}
+    try {
+        const rep = JSON.parse(jsonrepair(arrayCandidate));
+        if (Array.isArray(rep)) {
+            return rep.filter((p) => p && typeof p.search === "string" && typeof p.replace === "string");
+        }
+    } catch {}
+
+    const patches: FilePatch[] = [];
+    const patchHeaderRegex = /(?:^|[^\\])"search"\s*:\s*"/g;
+    const starts: { searchContentStart: number; matchStart: number }[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = patchHeaderRegex.exec(trimmed)) !== null) {
+        const matchStart = m[0].startsWith('"') ? m.index : m.index + 1;
+        starts.push({ searchContentStart: m.index + m[0].length, matchStart });
+    }
+
+    for (let i = 0; i < starts.length; i++) {
+        const endBound = i + 1 < starts.length ? starts[i + 1].matchStart : trimmed.length;
+        const block = trimmed.slice(starts[i].searchContentStart, endBound);
+        const midMatch = block.match(/"\s*,\s*"replace"\s*:\s*"/);
+        if (!midMatch || midMatch.index === undefined) continue;
+        const rawSearch = block.slice(0, midMatch.index);
+        let rawReplace = block.slice(midMatch.index + midMatch[0].length);
+        const endPatchMatch = rawReplace.match(/"\s*\}\s*(?:,\s*)?(?:\]\s*)?$/);
+        if (!endPatchMatch || endPatchMatch.index === undefined) continue;
+        rawReplace = rawReplace.slice(0, endPatchMatch.index);
+        patches.push({
+            search: decodeLooseJsonString(rawSearch),
+            replace: decodeLooseJsonString(rawReplace),
+        });
+    }
+    return patches;
+}
+
+/**
+ * Structural boundary extractor for malformed or truncated LLM responses.
+ * Unlike simple character regexes, slices strictly between sibling JSON property headers
+ * so an unescaped double-quote inside JS strings/templates never truncates a file prematurely.
  */
 function extractPartialLlmResponse(raw: string): ParsedLlmResponse | null {
     try {
-        const files: Record<string, { code: string }> = {};
+        const files: Record<string, FileChange> = {};
 
-        // Extract assistantMessage
-        const msgMatch = raw.match(/"assistantMessage"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-        const assistantMessage = msgMatch ? msgMatch[1] : "Generated application files.";
+        const assistantMessage = extractTopLevelStringField(raw, "assistantMessage", "Generated application files.");
+        const title = extractTopLevelStringField(raw, "title", "Zephyre App");
 
-        // Extract title
-        const titleMatch = raw.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-        const title = titleMatch ? titleMatch[1] : "Zephyre App";
+        // Locate every file property entry header: "<path>": { "code": " OR "<path>": { "patches": [
+        const fileHeaderRegex = /(?:^|[^\\])"((?:\/[^"\n\\]+|[a-zA-Z0-9_.\-\/]+\.[a-zA-Z0-9]{1,8}))"\s*:\s*\{\s*"(code|patches)"\s*:\s*("|\[)/g;
+        interface HeaderEntry {
+            path: string;
+            kind: "code" | "patches";
+            matchStart: number;
+            contentStart: number;
+        }
+        const headers: HeaderEntry[] = [];
+        let hMatch: RegExpExecArray | null;
+        while ((hMatch = fileHeaderRegex.exec(raw)) !== null) {
+            const matchStart = hMatch[0].startsWith('"') ? hMatch.index : hMatch.index + 1;
+            headers.push({
+                path: hMatch[1],
+                kind: hMatch[2] as "code" | "patches",
+                matchStart,
+                contentStart: hMatch.index + hMatch[0].length,
+            });
+        }
 
-        // Match file blocks: "filePath": { "code": "..." }
-        const fileRegex = /"(\/[^"]+)"\s*:\s*\{\s*"code"\s*:\s*"((?:[^"\\]|\\.)*)"?/g;
-        let match;
-        while ((match = fileRegex.exec(raw)) !== null) {
-            const filePath = match[1];
-            let code = match[2];
-            try {
-                // Unescape JSON string content safely
-                code = JSON.parse(`"${code}"`);
-            } catch {
-                code = code.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+        if (headers.length === 0) return null;
+
+        // Locate sibling top-level "dependencies": { right after closing "files" object (after first file header)
+        let depsKeyIdx = -1;
+        let depsBraceStart = -1;
+        const depsBoundaryRegex = /\}\s*\}\s*,\s*"dependencies"\s*:\s*\{/g;
+        depsBoundaryRegex.lastIndex = headers[0].contentStart;
+        const depsMatch = depsBoundaryRegex.exec(raw);
+        if (depsMatch) {
+            const relDepsOffset = depsMatch[0].indexOf('"dependencies"');
+            depsKeyIdx = depsMatch.index + relDepsOffset;
+            depsBraceStart = depsMatch.index + depsMatch[0].length - 1;
+        }
+
+        for (let i = 0; i < headers.length; i++) {
+            const hdr = headers[i];
+            const nextBound =
+                i + 1 < headers.length
+                    ? headers[i + 1].matchStart
+                    : depsKeyIdx !== -1 && depsKeyIdx > hdr.contentStart
+                    ? depsKeyIdx
+                    : raw.length;
+
+            const segment = raw.slice(hdr.contentStart, nextBound);
+
+            if (hdr.kind === "code") {
+                let rawCode = segment;
+                if (i < headers.length - 1) {
+                    const tailMatch = segment.match(/"\s*\}\s*,\s*$/);
+                    if (tailMatch && tailMatch.index !== undefined) {
+                        rawCode = segment.slice(0, tailMatch.index);
+                    }
+                } else if (depsKeyIdx !== -1 && depsKeyIdx > hdr.contentStart) {
+                    const tailMatch = segment.match(/"\s*\}\s*(?:,\s*)?\}\s*,\s*$/) || segment.match(/"\s*\}\s*,?\s*$/);
+                    if (tailMatch && tailMatch.index !== undefined) {
+                        rawCode = segment.slice(0, tailMatch.index);
+                    }
+                } else {
+                    const tailMatch =
+                        segment.match(/"\s*\}\s*(?:,?\s*\}\s*){1,2}$/) ||
+                        segment.match(/"\s*\}\s*,?\s*$/) ||
+                        segment.match(/"\s*$/);
+                    if (tailMatch && tailMatch.index !== undefined) {
+                        rawCode = segment.slice(0, tailMatch.index);
+                    }
+                }
+
+                files[hdr.path] = { code: decodeLooseJsonString(rawCode) };
+            } else {
+                const patches = extractPatchesFromSegment(segment);
+                if (patches.length > 0) {
+                    files[hdr.path] = { patches };
+                }
             }
-            files[filePath] = { code };
+        }
+
+        // Recover dependencies block if present
+        let dependencies: Record<string, string> = {};
+        if (depsBraceStart !== -1) {
+            const depsTail = raw.slice(depsBraceStart);
+            const endDeps = depsTail.indexOf("}");
+            const depsObjStr = endDeps !== -1 ? depsTail.slice(0, endDeps + 1) : depsTail + "}";
+            try {
+                const parsedDeps = JSON.parse(depsObjStr);
+                if (parsedDeps && typeof parsedDeps === "object") dependencies = parsedDeps;
+            } catch {
+                try {
+                    const repDeps = JSON.parse(jsonrepair(depsObjStr));
+                    if (repDeps && typeof repDeps === "object") dependencies = repDeps;
+                } catch {}
+            }
         }
 
         if (Object.keys(files).length > 0) {
             return {
                 assistantMessage,
                 title,
-                files: normalizeFilePaths(files),
-                dependencies: {},
+                files: normalizeFileChanges(files),
+                dependencies,
             };
         }
     } catch {
@@ -412,8 +709,8 @@ export function parseLlmJson(raw: string): ParsedLlmResponse {
         } catch {}
     }
 
-    // Attempt 5: Fallback regex extractor for partially generated files
-    const partial = extractPartialLlmResponse(clean);
+    // Attempt 5: Structural boundary extractor (handles unescaped inner double-quotes & partial streams)
+    const partial = extractPartialLlmResponse(clean.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, ""));
     if (partial) {
         return partial;
     }
@@ -429,69 +726,266 @@ export function parseLlmJson(raw: string): ParsedLlmResponse {
 }
 
 /**
- * Automatically repairs common LLM truncation artifacts:
- * - Unclosed arrays [ ... (missing ];)
- * - Unclosed objects { ... (missing })
- * - Unclosed strings / JSX tags
- * - Trailing cut-off attributes (e.g. size= or <Button variant=)
+ * Automatically repairs common LLM truncation artifacts using a LIFO delimiter stack,
+ * comment & template-expression tracking, and JSX tag awareness.
+ * Leaves already syntactically valid JS/JSX/TS files untouched.
  */
-export function repairTruncatedCode(code: string): string {
+export function repairTruncatedCode(code: string, filePath = "/file.jsx"): string {
     if (!code || typeof code !== "string") return code;
-    let cleaned = code.trimEnd();
 
-    // 1. Strip trailing cut-off attributes or incomplete JSX element tags
-    cleaned = cleaned.replace(/\s+[\w\-]+=\s*$/, "");
-    cleaned = cleaned.replace(/<[A-Za-z][A-Za-z0-9]*\s*$/, "");
-
-    // 2. Count unmatched braces, brackets, and parentheses outside strings
-    let openBraces = 0, openBrackets = 0, openParens = 0;
-    let inString: string | null = null;
-    let isEscaped = false;
-
-    for (let i = 0; i < cleaned.length; i++) {
-        const char = cleaned[i];
-        if (isEscaped) {
-            isEscaped = false;
-            continue;
-        }
-        if (char === "\\") {
-            isEscaped = true;
-            continue;
-        }
-        if (inString) {
-            if (char === inString) inString = null;
-            continue;
-        }
-        if (char === "'" || char === '"' || char === "`") {
-            inString = char;
-            continue;
-        }
-        if (char === "{") openBraces++;
-        else if (char === "}") openBraces = Math.max(0, openBraces - 1);
-        else if (char === "[") openBrackets++;
-        else if (char === "]") openBrackets = Math.max(0, openBrackets - 1);
-        else if (char === "(") openParens++;
-        else if (char === ")") openParens = Math.max(0, openParens - 1);
+    // Never mutate files that already parse cleanly with Babel AST
+    if (isJsSyntaxValid(code, filePath)) {
+        return code;
     }
 
-    // If inside an unclosed string, close it
+    let cleaned = code.trimEnd();
+
+    // Strip dangling incomplete attribute assignment (e.g. `size=` or `className=`)
+    cleaned = cleaned.replace(/\s+[A-Za-z_:$][\w.\-:$]*=\s*$/, "");
+    // Strip dangling `<` or `</` or incomplete property dot/trailing comma
+    cleaned = cleaned.replace(/<\/?\s*$/, "");
+    cleaned = cleaned.replace(/,\s*[A-Za-z_$][\w$]*\s*:\s*$/, "");
+
+    const delimStack: ("{" | "[" | "(" | "${")[] = [];
+    const jsxElements: { tag: string; delimDepth: number }[] = [];
+    let inString: "'" | '"' | "`" | null = null;
+    let inLineComment = false;
+    let inBlockComment = false;
+    let inJsxOpenTag = false;
+    let currentJsxTagName = "";
+    let jsxTagExprDepth = 0;
+    let jsxOpenTagDelimDepth = 0;
+
+    for (let i = 0; i < cleaned.length; i++) {
+        const ch = cleaned[i];
+        const next = cleaned[i + 1] ?? "";
+
+        if (inLineComment) {
+            if (ch === "\n") inLineComment = false;
+            continue;
+        }
+        if (inBlockComment) {
+            if (ch === "*" && next === "/") {
+                inBlockComment = false;
+                i++;
+            }
+            continue;
+        }
+
+        if (inString) {
+            if (ch === "\\") {
+                i++;
+                continue;
+            }
+            if (inString === "`" && ch === "$" && next === "{") {
+                delimStack.push("${");
+                inString = null;
+                i++;
+                continue;
+            }
+            if (ch === inString) {
+                inString = null;
+                continue;
+            }
+            // Single/double quoted strings in JS cannot cross raw newlines;
+            // guards against JSX child apostrophes like <p>User's</p>.
+            if ((inString === "'" || inString === '"') && ch === "\n") {
+                inString = null;
+            }
+            continue;
+        }
+
+        // Comments (outside JSX tag body/text; in JS expression/global mode)
+        if (ch === "/" && next === "/") {
+            inLineComment = true;
+            i++;
+            continue;
+        }
+        if (ch === "/" && next === "*") {
+            inBlockComment = true;
+            i++;
+            continue;
+        }
+
+        // Quotes: ignore contractions like `User's` / `Don't` inside JSX text
+        if (ch === "'" || ch === '"' || ch === "`") {
+            if (
+                ch === "'" &&
+                i > 0 &&
+                /[A-Za-z]/.test(cleaned[i - 1]) &&
+                /[A-Za-z]/.test(next)
+            ) {
+                continue;
+            }
+            inString = ch;
+            continue;
+        }
+
+        // JSX tag detection outside strings/comments
+        if (inJsxOpenTag) {
+            if (ch === "{") {
+                jsxTagExprDepth++;
+                delimStack.push("{");
+                continue;
+            }
+            if (ch === "}") {
+                if (jsxTagExprDepth > 0) jsxTagExprDepth--;
+                const popped = delimStack.pop();
+                if (popped === "${") inString = "`";
+                continue;
+            }
+            if (jsxTagExprDepth === 0) {
+                if (ch === "/" && next === ">") {
+                    inJsxOpenTag = false;
+                    currentJsxTagName = "";
+                    i++;
+                    continue;
+                }
+                if (ch === ">") {
+                    if (currentJsxTagName) {
+                        jsxElements.push({ tag: currentJsxTagName, delimDepth: delimStack.length });
+                    }
+                    inJsxOpenTag = false;
+                    currentJsxTagName = "";
+                    continue;
+                }
+            }
+            if (ch === "(") delimStack.push("(");
+            else if (ch === ")") {
+                const idx = delimStack.lastIndexOf("(");
+                if (idx !== -1) delimStack.splice(idx, 1);
+            } else if (ch === "[") delimStack.push("[");
+            else if (ch === "]") {
+                const idx = delimStack.lastIndexOf("[");
+                if (idx !== -1) delimStack.splice(idx, 1);
+            }
+            continue;
+        }
+
+        // Closing JSX element `</Tag>`
+        if (ch === "<" && next === "/") {
+            const closeMatch = cleaned.slice(i).match(/^<\/\s*([A-Za-z_$][\w.$]*)\s*>/);
+            if (closeMatch) {
+                const tag = closeMatch[1];
+                const idx = jsxElements.map((e) => e.tag).lastIndexOf(tag);
+                if (idx !== -1) jsxElements.splice(idx, 1);
+                i += closeMatch[0].length - 1;
+                continue;
+            }
+            if (cleaned.slice(i).startsWith("</>")) {
+                const idx = jsxElements.map((e) => e.tag).lastIndexOf("");
+                if (idx !== -1) jsxElements.splice(idx, 1);
+                i += 2;
+                continue;
+            }
+        }
+
+        // Opening JSX element `<Tag` when preceded by non-identifier/expression start
+        if (ch === "<") {
+            const prevSlice = cleaned.slice(0, i).trimEnd();
+            const prevChar = prevSlice[prevSlice.length - 1] ?? "";
+            const isExprStart =
+                prevSlice.length === 0 ||
+                "=(,[{:?;!&|>+-*%".includes(prevChar) ||
+                /\b(?:return|yield|await|throw|case|else)\s*$/.test(prevSlice);
+
+            const openMatch = cleaned.slice(i).match(/^<([A-Za-z_$][\w.$]*)(?=[\s/>]|$)/);
+            if (isExprStart && openMatch) {
+                inJsxOpenTag = true;
+                currentJsxTagName = openMatch[1];
+                jsxTagExprDepth = 0;
+                jsxOpenTagDelimDepth = delimStack.length;
+                i += openMatch[0].length - 1;
+                continue;
+            }
+            if (isExprStart && cleaned.slice(i, i + 2) === "<>") {
+                jsxElements.push({ tag: "", delimDepth: delimStack.length });
+                i += 1;
+                continue;
+            }
+        }
+
+        // Standard delimiters
+        if (ch === "{" || ch === "[" || ch === "(") {
+            delimStack.push(ch);
+        } else if (ch === "}") {
+            const top = delimStack[delimStack.length - 1];
+            if (top === "${") {
+                delimStack.pop();
+                inString = "`";
+            } else if (top === "{") {
+                delimStack.pop();
+            } else {
+                const idx = delimStack.lastIndexOf("{");
+                if (idx !== -1) delimStack.splice(idx, 1);
+            }
+        } else if (ch === "]") {
+            if (delimStack[delimStack.length - 1] === "[") {
+                delimStack.pop();
+            } else {
+                const idx = delimStack.lastIndexOf("[");
+                if (idx !== -1) delimStack.splice(idx, 1);
+            }
+        } else if (ch === ")") {
+            if (delimStack[delimStack.length - 1] === "(") {
+                delimStack.pop();
+            } else {
+                const idx = delimStack.lastIndexOf("(");
+                if (idx !== -1) delimStack.splice(idx, 1);
+            }
+        }
+    }
+
+    // 1. Close unclosed comment or string
+    if (inBlockComment) {
+        cleaned += " */";
+    }
     if (inString) {
         cleaned += inString;
     }
 
-    // Close unmatched parens, brackets, braces
-    while (openParens > 0) {
-        cleaned += ")";
-        openParens--;
+    // Strip any dangling trailing object dot like `user.` right before closing
+    cleaned = cleaned.replace(/([A-Za-z_$][\w$]*)\.\s*$/, "$1");
+
+    const closeJsxAtOrAboveDepth = (depth: number) => {
+        while (jsxElements.length > 0 && jsxElements[jsxElements.length - 1].delimDepth >= depth) {
+            const el = jsxElements.pop()!;
+            cleaned += el.tag ? `</${el.tag}>` : "</>";
+        }
+    };
+
+    const popDelimToken = (top: "{" | "[" | "(" | "${") => {
+        if (top === "${") {
+            cleaned += "}`";
+        } else if (top === "(") {
+            if (/\breturn\s*\(\s*$/.test(cleaned)) {
+                cleaned += "null";
+            }
+            cleaned += ")";
+        } else if (top === "[") {
+            const hasEnclosingDelimiter = delimStack.length > 0;
+            cleaned += hasEnclosingDelimiter ? "\n]" : "\n];";
+        } else if (top === "{") {
+            cleaned += "\n}";
+        }
+    };
+
+    // 2. If truncated inside an unclosed JSX opening tag (<div style={{ a: 1),
+    // first unwind any open attribute expression braces down to jsxOpenTagDelimDepth, then close ` />`
+    if (inJsxOpenTag) {
+        while (delimStack.length > jsxOpenTagDelimDepth) {
+            closeJsxAtOrAboveDepth(delimStack.length);
+            popDelimToken(delimStack.pop()!);
+        }
+        cleaned += " />";
     }
-    while (openBrackets > 0) {
-        cleaned += "\n];";
-        openBrackets--;
+
+    // 3. Unwind remaining JSX open elements & delimiter stack strictly in LIFO order
+    while (delimStack.length > 0) {
+        closeJsxAtOrAboveDepth(delimStack.length);
+        popDelimToken(delimStack.pop()!);
     }
-    while (openBraces > 0) {
-        cleaned += "\n}";
-        openBraces--;
-    }
+    closeJsxAtOrAboveDepth(0);
 
     return cleaned;
 }
@@ -671,7 +1165,7 @@ export default function App() {
     // 1. Repair truncated code in all JS/JSX files
     for (const [path, fileObj] of Object.entries(updatedFiles)) {
         if (path.endsWith(".js") || path.endsWith(".jsx") || path.endsWith(".ts") || path.endsWith(".tsx")) {
-            const repaired = repairTruncatedCode(fileObj.code);
+            const repaired = repairTruncatedCode(fileObj.code, path);
             if (repaired !== fileObj.code) {
                 updatedFiles[path] = { code: repaired };
             }

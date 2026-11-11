@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { synthesizeDomainBlueprint } from "@/app/api/gen-ai-code/route";
+import { synthesizeDomainBlueprint } from "@/lib/ai-prompts";
 
 describe("Domain Knowledge & Feature Expansion Engine", () => {
     it("should classify focused games as single-page with rich micro-features", () => {
