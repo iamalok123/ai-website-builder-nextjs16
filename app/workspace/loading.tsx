@@ -1,85 +1,128 @@
-import { Zap, Loader2, Code2, Eye, Sparkles } from "lucide-react";
+import Image from "next/image";
+import {
+    Code2,
+    Download,
+    Eye,
+    Loader2,
+    MessageSquare,
+    PanelLeftClose,
+    Plus,
+    Square,
+} from "lucide-react";
+import { OrbitalRingLoader } from "@/components/OrbitalRingLoader";
 
 export default function WorkspaceLoading() {
     return (
-        <div className="relative flex h-screen w-full overflow-hidden bg-[#0a0a0a] text-white">
-            {/* Ambient Background Spotlights */}
-            <div className="fixed top-12 left-1/3 -translate-x-1/2 h-96 w-96 rounded-full bg-purple-600/10 blur-[140px] pointer-events-none" />
-            <div className="fixed bottom-12 right-1/3 h-96 w-96 rounded-full bg-indigo-500/10 blur-[140px] pointer-events-none" />
-
-            {/* Left Column: Chat Panel Skeleton */}
-            <div className="hidden md:flex w-[320px] shrink-0 flex-col border-r border-white/10 bg-[#07080c]/90 backdrop-blur-xl p-4 justify-between animate-pulse">
-                <div className="space-y-4">
-                    {/* Workspace Header Skeleton */}
-                    <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                        <div className="flex items-center gap-2">
-                            <div className="h-7 w-7 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                                <Zap className="h-4 w-4 text-purple-400" />
-                            </div>
-                            <div className="h-4 w-32 rounded bg-white/10" />
+        <div className="relative flex h-screen max-h-dvh w-full overflow-hidden bg-[#0a0a0a] text-white">
+            {/* Left Column: Monochrome Chat Panel Matching Workspace ChatPanel */}
+            <div className="hidden md:flex md:w-87.5 lg:w-95 shrink-0 flex-col h-full min-h-0 bg-[#0d0d0d]">
+                {/* Chat Header */}
+                <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/6 px-3.5 sm:px-4">
+                    <div className="h-4 w-32 rounded bg-white/15 animate-pulse" />
+                    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                        <div className="h-6 w-20 rounded-full bg-white/6 animate-pulse" />
+                        <div className="hidden md:flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500">
+                            <PanelLeftClose className="h-4 w-4" />
                         </div>
-                        <div className="h-4 w-12 rounded-full bg-purple-500/20" />
+                    </div>
+                </div>
+
+                {/* Chat Messages Preview Skeleton */}
+                <div className="flex-1 min-h-0 px-3 py-4 space-y-4 overflow-hidden">
+                    {/* User Message Bubble Placeholder */}
+                    <div className="flex items-start justify-end gap-2.5">
+                        <div className="w-[78%] rounded-2xl rounded-br-sm bg-white/8 px-4 py-3 space-y-2 animate-pulse">
+                            <div className="h-3 w-full rounded bg-white/15" />
+                            <div className="h-3 w-5/6 rounded bg-white/10" />
+                            <div className="h-3 w-2/3 rounded bg-white/10" />
+                        </div>
+                        <div className="h-7 w-7 rounded-full bg-white/12 shrink-0 animate-pulse" />
                     </div>
 
-                    {/* Chat Messages Skeleton */}
-                    <div className="space-y-3 pt-2">
-                        <div className="flex items-start gap-2.5">
-                            <div className="h-6 w-6 rounded-full bg-purple-500/20 shrink-0" />
-                            <div className="space-y-1.5 flex-1">
-                                <div className="h-3 w-3/4 rounded bg-white/10" />
-                                <div className="h-3 w-1/2 rounded bg-white/5" />
-                            </div>
-                        </div>
-
-                        <div className="flex items-start gap-2.5 pl-6">
-                            <div className="space-y-1.5 flex-1 p-3 rounded-xl bg-white/5 border border-white/5">
-                                <div className="h-3 w-full rounded bg-white/10" />
-                                <div className="h-3 w-5/6 rounded bg-white/10" />
-                                <div className="h-3 w-2/3 rounded bg-white/5" />
+                    {/* Zephyre Assistant Thinking Pill */}
+                    <div className="flex items-start gap-2.5">
+                        <Image
+                            src="/favicon.svg"
+                            alt="Zephyre"
+                            width={28}
+                            height={28}
+                            className="mt-0.5 h-7 w-7 sm:h-7.5 sm:w-7.5 shrink-0 rounded-md"
+                            priority
+                        />
+                        <div className="rounded-2xl rounded-tl-sm bg-white/5 px-4 py-3.5">
+                            <div className="flex items-center gap-2.5">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-white/70 shrink-0" />
+                                <span className="text-[13px] sm:text-sm text-white/85">
+                                    Loading workspace...
+                                </span>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Input Skeleton */}
-                <div className="pt-3 border-t border-white/10">
-                    <div className="h-12 w-full rounded-xl bg-white/5 border border-white/10" />
+                {/* Bottom Chat Input Bar */}
+                <div className="border-t border-white/6 p-3 sm:p-3.5 shrink-0 bg-[#0d0d0d]">
+                    <div className="rounded-xl border border-white/8 bg-white/4">
+                        <div className="px-4 pb-2.5 pt-3.5 text-sm sm:text-[15px] text-white/35 leading-relaxed">
+                            Loading...
+                        </div>
+                        <div className="flex items-center justify-between px-2.5 pb-2.5">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/6 text-white/40">
+                                <Plus className="h-4 w-4" />
+                            </div>
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/12 text-white/70">
+                                <Square className="h-3.5 w-3.5 fill-current" />
+                            </div>
+                        </div>
+                    </div>
+                    <p className="mt-2 text-center text-[11px] sm:text-xs text-white/25">
+                        Preparing your project workspace…
+                    </p>
                 </div>
             </div>
 
-            {/* Right Column: Code / Preview Panel Skeleton */}
-            <div className="flex-1 flex flex-col bg-[#07080c]/60 backdrop-blur-md">
-                {/* Workspace Top Toolbar */}
-                <div className="h-12 border-b border-white/10 flex items-center justify-between px-4 bg-[#0a0b14]/80">
-                    <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-300 text-xs font-semibold">
-                            <Eye className="h-3.5 w-3.5" />
-                            <span>Preview</span>
+            {/* Desktop Vertical Divider */}
+            <div className="hidden md:block w-px shrink-0 bg-white/6" />
+
+            {/* Right Column: Monochrome Preview / Code Panel */}
+            <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden bg-black">
+                {/* Top Toolbar */}
+                <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/5 bg-[#121214] px-2 sm:px-4 gap-1.5 sm:gap-2">
+                    <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                        <div className="h-8 gap-1 px-2 text-xs font-semibold text-zinc-500 flex items-center md:hidden">
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            <span className="hidden xs:inline">Chat</span>
                         </div>
-                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/5 text-zinc-500 text-xs font-medium">
-                            <Code2 className="h-3.5 w-3.5" />
-                            <span>Code</span>
+                        <div className="h-8 bg-black/40 p-0.5 border border-white/5 rounded-lg inline-flex items-center gap-0.5">
+                            <div className="inline-flex h-7 items-center gap-1.5 rounded-md border border-white/10 bg-white/10 px-2 sm:px-3 text-xs font-medium text-white">
+                                <Eye className="h-3.5 w-3.5" />
+                                <span>Preview</span>
+                            </div>
+                            <div className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 sm:px-3 text-xs font-medium text-zinc-500">
+                                <Code2 className="h-3.5 w-3.5" />
+                                <span>Code</span>
+                            </div>
                         </div>
                     </div>
-                    <div className="h-7 w-24 rounded-lg bg-purple-500/20 animate-pulse" />
+
+                    <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                        <div className="inline-flex h-8 items-center gap-1.5 px-2 sm:px-2.5 text-xs text-zinc-600">
+                            <Download className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Export ZIP</span>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Main Workspace Preview Loading Area */}
-                <div className="flex-1 flex flex-col items-center justify-center p-8 relative">
-                    <div className="relative flex flex-col items-center justify-center p-8 rounded-2xl border border-white/10 bg-[#0a0b14]/90 backdrop-blur-xl shadow-2xl max-w-sm w-full text-center">
-                        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-purple-500/30 bg-purple-500/10 text-purple-400 shadow-xl shadow-purple-500/20">
-                            <Loader2 className="h-7 w-7 text-purple-400 animate-spin" />
-                        </div>
-                        <h3 className="text-lg font-extrabold text-white tracking-tight mb-1 flex items-center justify-center gap-2">
-                            <span>Loading Workspace</span>
-                            <Sparkles className="h-4 w-4 text-purple-400 animate-pulse" />
-                        </h3>
-                        <p className="text-xs text-zinc-400 font-normal">
-                            Fetching project files and preparing live preview environment...
+                {/* Pure Black Center Canvas Matching "Generating Application..." Animation */}
+                <div className="flex-1 flex flex-col items-center justify-center gap-4 bg-black text-center p-6">
+                    <OrbitalRingLoader color="#ffffff" size={40} />
+                    <div className="max-w-xs space-y-1">
+                        <p className="text-sm font-semibold text-white">
+                            Loading Workspace...
                         </p>
-                        <div className="mt-4 h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                            <div className="h-full bg-linear-to-r from-purple-500 via-indigo-500 to-purple-500 animate-pulse rounded-full w-2/3" />
-                        </div>
+                        <p className="text-xs text-zinc-500">
+                            Fetching project files and preparing preview...
+                        </p>
                     </div>
                 </div>
             </div>

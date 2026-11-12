@@ -26,6 +26,7 @@ import {
     Crosshair,
 } from "lucide-react";
 import { RingLoader } from "react-spinners";
+import { OrbitalRingLoader } from "@/components/OrbitalRingLoader";
 import JSZip from "jszip";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -1097,10 +1098,13 @@ export default defineConfig({
                             )}
 
                             {!isGenerating && isStartingSandbox && (
-                                <div className="flex flex-col items-center justify-center gap-3 text-center p-6">
-                                    <Loader2 className="h-8 w-8 animate-spin text-orange-400" />
+                                <div className="flex flex-col items-center justify-center gap-4 text-center p-6">
+                                    <OrbitalRingLoader color="#ffffff" size={40} />
                                     <div className="max-w-xs space-y-1">
-                                        <p className="text-sm font-semibold text-white">Loading...</p>
+                                        <p className="text-sm font-semibold text-white">Loading Workspace...</p>
+                                        <p className="text-xs text-zinc-500">
+                                            Preparing live preview environment...
+                                        </p>
                                     </div>
                                 </div>
                             )}
