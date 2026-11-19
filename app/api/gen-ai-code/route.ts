@@ -313,20 +313,56 @@ export async function POST(req: NextRequest) {
                 const modelName = process.env.GEMINI_MODEL || "gemini-3.8-flash";
                 const contents = await buildContents(messages, fileData);
 
-                const geminiStream = await ai.models.generateContentStream({
-                    model: modelName,
-                    contents,
-                    config: {
-                        systemInstruction: getSystemPrompt(messages, fileData),
-                        temperature: isFixRequest ? 0.2 : 0.7,
-                        maxOutputTokens: 65536,
-                        responseMimeType: "application/json",
-                        // Gemini emits thought chunks before the actual output.
-                        thinkingConfig: {
-                            includeThoughts: true,
-                        },
-                    },
-                });
+                // Candidate fallback models in case the primary model suffers a 503 high-demand spike
+                const candidateModels = [
+                    modelName,
+                    ...(modelName !== "gemini-2.5-flash" ? ["gemini-2.5-flash"] : []),
+                ];
+
+                let geminiStream: Awaited<ReturnType<typeof ai.models.generateContentStream>> | null = null;
+
+                // Automatic retry loop with exponential backoff & model fallback for transient 503/429 spikes
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    const currentModel = attempt === 0 ? modelName : (candidateModels[1] || modelName);
+                    try {
+                        geminiStream = await ai.models.generateContentStream({
+                            model: currentModel,
+                            contents,
+                            config: {
+                                systemInstruction: getSystemPrompt(messages, fileData),
+                                temperature: isFixRequest ? 0.2 : 0.7,
+                                maxOutputTokens: 65536,
+                                responseMimeType: "application/json",
+                                // Gemini emits thought chunks before the actual output.
+                                thinkingConfig: {
+                                    includeThoughts: true,
+                                },
+                            },
+                        });
+                        break;
+                    } catch (streamInitErr: unknown) {
+                        const errObj = streamInitErr as { status?: number; message?: string } | null;
+                        const isTransient =
+                            errObj?.status === 503 ||
+                            errObj?.status === 429 ||
+                            errObj?.message?.includes("503") ||
+                            errObj?.message?.includes("high demand") ||
+                            errObj?.message?.includes("UNAVAILABLE");
+
+                        if (isTransient && attempt < 2) {
+                            const delayMs = (attempt + 1) * 1500;
+                            console.warn(`[gen-ai-code] Model ${currentModel} returned 503/transient capacity spike. Retrying in ${delayMs}ms (attempt ${attempt + 1}/3)...`);
+                            enqueue(sseEvent("status", { message: `AI model busy, retrying (${attempt + 1}/2)…` }));
+                            await new Promise((resolve) => setTimeout(resolve, delayMs));
+                            continue;
+                        }
+                        throw streamInitErr;
+                    }
+                }
+
+                if (!geminiStream) {
+                    throw new Error("Failed to initialize AI stream after retries.");
+                }
 
                 let accumulated = ""; // final JSON output
                 let lastEmitTime = 0; // throttle thought emissions
