@@ -214,7 +214,17 @@ export function WorkspaceClient({
                     setMessages((prev) => prev.slice(0, -1));
                     return;
                 }
-                if (!res.ok || !res.body) throw new Error("Generation failed");
+                if (!res.ok || !res.body) {
+                    let errMsg = "Generation failed";
+                    try {
+                        const errData = await res.json();
+                        errMsg = errData.message || errData.error || errMsg;
+                    } catch {
+                        const text = await res.text().catch(() => "");
+                        if (text) errMsg = text.slice(0, 150);
+                    }
+                    throw new Error(errMsg);
+                }
 
                 const reader = res.body.getReader();
                 const decoder = new TextDecoder();

@@ -449,8 +449,20 @@ export default defineConfig({
                 }),
             });
 
+            if (!res.ok) {
+                let errorMsg = `Sandbox error (${res.status})`;
+                try {
+                    const errJson = await res.json();
+                    errorMsg = errJson.error || errJson.message || errorMsg;
+                } catch {
+                    const text = await res.text().catch(() => "");
+                    if (text) errorMsg = text.slice(0, 150);
+                }
+                throw new Error(errorMsg);
+            }
+
             const result = await res.json();
-            if (!res.ok || !result.success) {
+            if (!result.success) {
                 throw new Error(result.error || "Failed to boot cloud sandbox");
             }
 
@@ -488,13 +500,21 @@ export default defineConfig({
                     changedFiles,
                 }),
             });
-            const data = await res.json();
             if (!res.ok) {
-                if (res.status === 404 || data.code === "SANDBOX_EXPIRED") {
+                if (res.status === 404) {
                     console.warn("[CodePanel] Sandbox expired or unreachable, resetting for automatic re-boot...");
                     setSandboxId(null);
+                    return;
                 }
-            } else if (pendingFixSyncRef.current || previewErrorRef.current?.category === "compile") {
+                try {
+                    const errData = await res.json();
+                    if (errData?.code === "SANDBOX_EXPIRED") {
+                        setSandboxId(null);
+                    }
+                } catch {}
+                return;
+            }
+            if (pendingFixSyncRef.current || previewErrorRef.current?.category === "compile") {
                 pendingFixSyncRef.current = false;
                 if (postFixReloadTimerRef.current) {
                     clearTimeout(postFixReloadTimerRef.current);
@@ -559,17 +579,27 @@ export default defineConfig({
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ action: "health", sandboxId }),
                 });
-                const data = await res.json();
                 if (isCancelled) return;
 
                 if (!res.ok) {
-                    if (res.status === 404 || data.code === "SANDBOX_EXPIRED") {
+                    if (res.status === 404) {
                         console.warn("[CodePanel] Sandbox expired during health check, reviving...");
                         if (fileDataRef.current) {
                             startSandboxRef.current(fileDataRef.current, null);
                         }
+                    } else {
+                        try {
+                            const errData = await res.json();
+                            if (errData?.code === "SANDBOX_EXPIRED" && fileDataRef.current) {
+                                startSandboxRef.current(fileDataRef.current, null);
+                            }
+                        } catch {}
                     }
-                } else if (data.status === "restarted") {
+                    return;
+                }
+
+                const data = await res.json();
+                if (data.status === "restarted") {
                     console.info("[CodePanel] Vite dev server was revived by supervisor, refreshing preview...");
                     if (iframeRef.current && previewUrl) {
                         const separator = previewUrl.includes("?") ? "&" : "?";
