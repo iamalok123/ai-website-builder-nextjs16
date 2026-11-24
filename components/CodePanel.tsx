@@ -696,26 +696,6 @@ export default defineConfig({
         });
     };
 
-    // Reload iframe with cache-busting timestamp & container health verification
-    const handleRefreshIframe = async () => {
-        if (!previewUrl) return;
-        setIsIframeLoading(true);
-        if (sandboxId) {
-            try {
-                await fetch("/api/sandbox", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action: "health", sandboxId }),
-                });
-            } catch {}
-        }
-        if (iframeRef.current) {
-            const separator = previewUrl.includes("?") ? "&" : "?";
-            iframeRef.current.src = `${previewUrl}${separator}_t=${Date.now()}`;
-            toast.info("Reloading preview frame...");
-        }
-    };
-
     // Copy live shareable URL
     const handleCopyUrl = async () => {
         if (!previewUrl) return;
@@ -851,15 +831,6 @@ export default defineConfig({
                                     </button>
                                 </div>
 
-                                {/* Browser Reload Preview Button */}
-                                <button
-                                    onClick={handleRefreshIframe}
-                                    title="Reload preview"
-                                    className="p-1.5 rounded-lg border border-white/5 bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-                                >
-                                    <RefreshCw className={`h-3.5 w-3.5 ${isIframeLoading ? "animate-spin text-orange-400" : ""}`} />
-                                </button>
-
                                 {/* Click-to-Inspect Element Selector */}
                                 <button
                                     onClick={handleToggleInspector}
@@ -876,18 +847,9 @@ export default defineConfig({
                                 </button>
 
                                 {/* Central Omnibar Link Pill (hidden on small mobile screens to prevent overlapping) */}
-                                <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-black/60 border border-white/10 rounded-full text-xs font-mono text-zinc-300 min-w-0 flex-1 max-w-xs sm:max-w-sm justify-between shadow-inner">
-                                    <div className="flex items-center gap-2 min-w-0 truncate">
-                                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                                        <span className="truncate select-all text-[11px] text-zinc-300">{previewUrl}</span>
-                                    </div>
-                                    <button
-                                        onClick={handleCopyUrl}
-                                        title="Copy URL"
-                                        className="text-zinc-500 hover:text-zinc-200 transition-colors shrink-0 cursor-pointer p-0.5"
-                                    >
-                                        {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                                    </button>
+                                <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-black/60 border border-white/10 rounded-full text-xs font-mono text-zinc-300 min-w-0 flex-1 max-w-xs sm:max-w-sm shadow-inner">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                                    <span className="truncate select-all text-[11px] text-zinc-300">{previewUrl}</span>
                                 </div>
 
                                 {/* Open in New Tab Button */}
