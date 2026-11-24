@@ -1240,7 +1240,7 @@ export default function Home() {
               {/* Social Icons */}
               <div className="flex items-center gap-3 mt-6">
                 <a
-                  href="https://linkedin.com"
+                  href="https://www.linkedin.com/in/alok-hotta/"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="h-9 w-9 rounded-lg border border-zinc-800 bg-zinc-900/80 text-zinc-400 hover:text-orange-400 hover:border-orange-500/40 hover:bg-orange-500/10 transition-all flex items-center justify-center"
@@ -1251,7 +1251,7 @@ export default function Home() {
                   </svg>
                 </a>
                 <a
-                  href="https://instagram.com"
+                  href="https://www.instagram.com/_._alok_.123"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="h-9 w-9 rounded-lg border border-zinc-800 bg-zinc-900/80 text-zinc-400 hover:text-orange-400 hover:border-orange-500/40 hover:bg-orange-500/10 transition-all flex items-center justify-center"
@@ -1264,7 +1264,7 @@ export default function Home() {
                   </svg>
                 </a>
                 <a
-                  href="https://x.com"
+                  href="https://x.com/_alok_h"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="h-9 w-9 rounded-lg border border-zinc-800 bg-zinc-900/80 text-zinc-400 hover:text-orange-400 hover:border-orange-500/40 hover:bg-orange-500/10 transition-all flex items-center justify-center"
@@ -1275,7 +1275,7 @@ export default function Home() {
                   </svg>
                 </a>
                 <a
-                  href="https://github.com"
+                  href="https://github.com/iamalok123"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="h-9 w-9 rounded-lg border border-zinc-800 bg-zinc-900/80 text-zinc-400 hover:text-orange-400 hover:border-orange-500/40 hover:bg-orange-500/10 transition-all flex items-center justify-center"
