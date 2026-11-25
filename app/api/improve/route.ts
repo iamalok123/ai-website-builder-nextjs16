@@ -6,6 +6,11 @@ import { db } from "@/lib/prisma";
 import { CREDIT_COST_PER_GENERATION } from "@/lib/constants";
 import type { FileData } from "@/types/workspace";
 import { revalidatePath } from "next/cache";
+import {
+    classifyGeminiError,
+    formatUserFacingGeminiError,
+    getImproveCandidateModels,
+} from "@/lib/gemini-client";
 
 // ─── SSE helper ───────────────────────────────────────────────────────────────
 
@@ -82,6 +87,8 @@ export async function POST(request: NextRequest) {
             // We immediately emit a file_patch SSE event so Sandpack
             // updates live in the browser as each file is patched.
 
+            let hasAppliedPatches = false;
+
             const updateFileTool = createTool({
                 name: "update_file",
                 description:
@@ -96,6 +103,7 @@ export async function POST(request: NextRequest) {
                         .describe("One sentence explaining what you changed and why"),
                 }),
                 async execute({ path, code, reason }) {
+                    hasAppliedPatches = true;
                     patchedFiles[path] = { code };
                     // Emit live patch — client applies it to Sandpack immediately
                     enqueue(sseEvent("file_patch", { path, code, reason }));
@@ -134,12 +142,13 @@ export async function POST(request: NextRequest) {
                 .map(([path, { code }]) => `// ${path}\n${code}`)
                 .join("\n\n---\n\n");
 
-            const agent = new Agent({
-                providerId: "gemini",
-                modelId: process.env.GEMINI_MODEL || "gemini-3.8-flash",
-                apiKey: process.env.GEMINI_API_KEY!,
-                maxIterations: 20,
-                systemPrompt: `You are an elite principal full-stack developer improving and modifying a live, production-grade web application running in an isolated cloud microVM.
+            const createImproveAgent = (modelId: string) => {
+                const agent = new Agent({
+                    providerId: "gemini",
+                    modelId,
+                    apiKey: process.env.GEMINI_API_KEY!,
+                    maxIterations: 20,
+                    systemPrompt: `You are an elite principal full-stack developer improving and modifying a live, production-grade web application running in an isolated cloud microVM.
 
 The app is built with React 19 (functional components with hooks), Tailwind CSS for luxury styling, and an Express file-backed persistence server on port 3001.
 Available packages: react, react-dom, tailwindcss, lucide-react, recharts, react-router-dom, framer-motion, date-fns, zod, react-hook-form, clsx, tailwind-merge, express, cors.
@@ -169,19 +178,13 @@ RULES:
 - CRITICAL DEFENSIVE CODING: Use optional chaining (item?.title) and image onError fallbacks to prevent runtime crashes.
 - CRITICAL TAILWIND SYNTAX: If dynamic class names are needed, use: className={\`my-class \${variable}\`}.
 - PRO TIP: You can call \`update_file\` multiple times in a single turn to update all necessary files efficiently!`,
-                tools: [updateFileTool, doneImprovingTool],
-                // Auto-approve both tools — no human-in-the-loop needed in this context
-                toolPolicies: {
-                    update_file: { autoApprove: true },
-                    done_improving: { autoApprove: true },
-                },
-            });
-
-            try {
-                // ── Stream agent reasoning to chat panel ─────────────────────────
-                // assistant-text-delta fires as the agent types its reasoning.
-                // We emit these as "thinking" events — shown in the chat panel
-                // as a live streaming message so users see the agent working.
+                    tools: [updateFileTool, doneImprovingTool],
+                    // Auto-approve both tools — no human-in-the-loop needed in this context
+                    toolPolicies: {
+                        update_file: { autoApprove: true },
+                        done_improving: { autoApprove: true },
+                    },
+                });
 
                 agent.subscribe((event) => {
                     if (event.type === "assistant-text-delta" && event.text) {
@@ -205,13 +208,56 @@ RULES:
                     }
                 });
 
-                // ── Run the agent ─────────────────────────────────────────────────
-                enqueue(sseEvent("status", { message: "Cline agent starting…" }));
+                return agent;
+            };
 
-                const result = await agent.run(userRequest);
+            try {
+                const candidateModels = getImproveCandidateModels(
+                    process.env.GEMINI_IMPROVE_MODEL,
+                    process.env.GEMINI_MODEL
+                );
+                let result: Awaited<ReturnType<Agent["run"]>> | null = null;
 
-                if (result.status === "failed") {
-                    throw new Error(result.error?.message ?? "Agent run failed");
+                for (let idx = 0; idx < candidateModels.length; idx++) {
+                    const candidateModel = candidateModels[idx];
+                    const agent = createImproveAgent(candidateModel);
+
+                    enqueue(
+                        sseEvent("status", {
+                            message:
+                                idx === 0
+                                    ? "Cline agent starting…"
+                                    : `Switching agent to ${candidateModel}…`,
+                        })
+                    );
+
+                    try {
+                        const runResult = await agent.run(userRequest);
+                        if (runResult.status === "failed") {
+                            throw new Error(runResult.error?.message ?? "Agent run failed");
+                        }
+                        result = runResult;
+                        break;
+                    } catch (agentErr: unknown) {
+                        const classified = classifyGeminiError(agentErr);
+                        if (
+                            hasAppliedPatches ||
+                            !classified.isRetryable ||
+                            idx === candidateModels.length - 1
+                        ) {
+                            throw agentErr;
+                        }
+                        console.warn(
+                            `[improve] Model ${candidateModel} failed (${classified.kind}), switching to ${candidateModels[idx + 1]}...`
+                        );
+                        await new Promise((resolve) =>
+                            setTimeout(resolve, classified.kind === "model_unavailable" ? 0 : 450)
+                        );
+                    }
+                }
+
+                if (!result) {
+                    throw new Error("Agent failed across all Gemini candidate models.");
                 }
 
                 // ── Deduct credit + save to DB ────────────────────────────────────
@@ -261,23 +307,13 @@ RULES:
             } catch (err: unknown) {
                 console.error("[improve] error:", err);
 
-                let errorMessage = "Something went wrong. Please try again.";
-                const errObj = err as {
-                    status?: number;
-                    message?: string;
-                    code?: string;
-                    cause?: { code?: string };
-                } | null;
-
-                if (errObj?.status === 429 || errObj?.message?.includes("429") || errObj?.message?.includes("quota") || errObj?.message?.includes("Quota")) {
-                    errorMessage = "You have exceeded your Gemini API rate limit (Free Tier). Please wait 60 seconds and try again.";
-                } else if (errObj?.status === 503 || errObj?.message?.includes("503")) {
-                    errorMessage = "The Gemini AI servers are currently experiencing high demand. Please try again in a few moments.";
-                } else if (errObj?.code === "ECONNRESET" || errObj?.cause?.code === "ECONNRESET" || errObj?.message?.includes("terminated")) {
-                    errorMessage = "The AI connection was interrupted. This can happen with complex generations. Please try again.";
-                } else if (err instanceof Error) {
-                    errorMessage = err.message;
-                }
+                const classified = classifyGeminiError(err);
+                const errorMessage =
+                    classified.kind !== "fatal"
+                        ? formatUserFacingGeminiError(err)
+                        : err instanceof Error
+                        ? err.message
+                        : "Something went wrong. Please try again.";
 
                 enqueue(
                     sseEvent("error", {

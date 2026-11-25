@@ -356,7 +356,17 @@ export function WorkspaceClient({
                     setMessages((prev) => prev.slice(0, -2));
                     return;
                 }
-                if (!res.ok || !res.body) throw new Error("Improve failed");
+                if (!res.ok || !res.body) {
+                    let errMsg = "Improve failed";
+                    try {
+                        const errData = await res.json();
+                        errMsg = errData.message || errData.error || errMsg;
+                    } catch {
+                        const text = await res.text().catch(() => "");
+                        if (text) errMsg = text.slice(0, 150);
+                    }
+                    throw new Error(errMsg);
+                }
 
                 const reader = res.body.getReader();
                 const decoder = new TextDecoder();

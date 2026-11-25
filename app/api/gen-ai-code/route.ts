@@ -8,6 +8,12 @@ import { aj } from "@/lib/arcjet";
 import { revalidatePath } from "next/cache";
 import { parseLlmJson, ensureStandardFiles, applyFileChanges, validateProjectSyntax, type ParsedLlmResponse } from "@/lib/ai-json-parser";
 import { DIAGNOSTIC_FIX_SYSTEM_PROMPT, getSystemPrompt, synthesizeDomainBlueprint, buildSyntaxRepairPrompt } from "@/lib/ai-prompts";
+import {
+    DEFAULT_GEMINI_MODEL,
+    formatUserFacingGeminiError,
+    generateGeminiContentWithFallback,
+    streamGeminiWithFallback,
+} from "@/lib/gemini-client";
 import { isDiagnosticPrompt, extractDiagnosticSummary } from "@/lib/error-fixer";
 import { isSafeExternalUrl } from "@/lib/security";
 
@@ -21,24 +27,6 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 function sseEvent(type: string, payload: unknown): string {
     return `data: ${JSON.stringify({ type, ...(payload as object) })}\n\n`;
-}
-
-
-
-// ─── Extract short label from a Gemini thought chunk ─────────────────────────
-// Gemini thoughts often start with a bold heading like **Verify Config**
-// We extract that. If no bold heading, take the first sentence only.
-
-function extractThoughtLabel(text: string): string | null {
-    // Try to grab **bold heading** at the start
-    const boldMatch = text.match(/\*\*([^*]{4,60})\*\*/);
-    if (boldMatch) return boldMatch[1].trim();
-
-    // Fall back to first sentence (up to first . or \n), capped at 60 chars
-    const sentence = text.split(/[.\n]/)[0].trim();
-    if (sentence.length >= 8 && sentence.length <= 80) return sentence;
-
-    return null;
 }
 
 
@@ -310,101 +298,40 @@ export async function POST(req: NextRequest) {
 
             try {
                 const isFixRequest = isDiagnosticPrompt(lastUserMessage);
-                const modelName = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+                const preferredModel = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
                 const contents = await buildContents(messages, fileData);
 
-                // Candidate fallback models in case the primary model suffers a 503 high-demand spike
-                const candidateModels = [
-                    modelName,
-                    ...(modelName !== "gemini-2.5-flash" ? ["gemini-2.5-flash"] : []),
-                ];
-
-                let geminiStream: Awaited<ReturnType<typeof ai.models.generateContentStream>> | null = null;
-
-                // Automatic retry loop with exponential backoff & model fallback for transient 503/429 spikes
-                for (let attempt = 0; attempt < 3; attempt++) {
-                    const currentModel = attempt === 0 ? modelName : (candidateModels[1] || modelName);
-                    try {
-                        geminiStream = await ai.models.generateContentStream({
-                            model: currentModel,
-                            contents,
-                            config: {
-                                systemInstruction: getSystemPrompt(messages, fileData),
-                                temperature: isFixRequest ? 0.2 : 0.7,
-                                maxOutputTokens: 65536,
-                                responseMimeType: "application/json",
-                                // Gemini emits thought chunks before the actual output.
-                                thinkingConfig: {
-                                    includeThoughts: true,
-                                },
-                            },
-                        });
-                        break;
-                    } catch (streamInitErr: unknown) {
-                        const errObj = streamInitErr as { status?: number; message?: string } | null;
-                        const isTransient =
-                            errObj?.status === 503 ||
-                            errObj?.status === 429 ||
-                            errObj?.message?.includes("503") ||
-                            errObj?.message?.includes("high demand") ||
-                            errObj?.message?.includes("UNAVAILABLE");
-
-                        if (isTransient && attempt < 2) {
-                            const delayMs = (attempt + 1) * 1500;
-                            console.warn(`[gen-ai-code] Model ${currentModel} returned 503/transient capacity spike. Retrying in ${delayMs}ms (attempt ${attempt + 1}/3)...`);
-                            enqueue(sseEvent("status", { message: `AI model busy, retrying (${attempt + 1}/2)…` }));
-                            await new Promise((resolve) => setTimeout(resolve, delayMs));
-                            continue;
+                const generationResult = await streamGeminiWithFallback({
+                    client: ai.models,
+                    preferredModel,
+                    contents,
+                    config: {
+                        systemInstruction: getSystemPrompt(messages, fileData),
+                        temperature: isFixRequest ? 0.2 : 0.7,
+                        maxOutputTokens: 65536,
+                        responseMimeType: "application/json",
+                        // Gemini emits thought chunks before the actual output.
+                        thinkingConfig: {
+                            includeThoughts: true,
+                        },
+                    },
+                    onThoughtLabel: (label) => enqueue(sseEvent("status", { message: label })),
+                    onStatus: (message) => enqueue(sseEvent("status", { message })),
+                    canRecoverPartial: (text) => {
+                        if (text.trim().length < 150) return false;
+                        try {
+                            const candidate = parseLlmJson(text);
+                            return Boolean(candidate?.files && Object.keys(candidate.files).length > 0);
+                        } catch {
+                            return false;
                         }
-                        throw streamInitErr;
-                    }
-                }
+                    },
+                });
 
-                if (!geminiStream) {
-                    throw new Error("Failed to initialize AI stream after retries.");
-                }
-
-                let accumulated = ""; // final JSON output
-                let lastEmitTime = 0; // throttle thought emissions
-                let lastFinishReason: string | undefined;
-
-                try {
-                    for await (const chunk of geminiStream) {
-                        const candidate0 = chunk.candidates?.[0];
-                        if (candidate0?.finishReason) {
-                            lastFinishReason = candidate0.finishReason;
-                        }
-                        const parts = candidate0?.content?.parts ?? [];
-
-                        for (const part of parts) {
-                            if (!part.text) continue;
-
-                            if (part.thought) {
-                                const now = Date.now();
-                                if (now - lastEmitTime > 600) {
-                                    const label = extractThoughtLabel(part.text);
-                                    if (label) {
-                                        enqueue(sseEvent("status", { message: label }));
-                                        lastEmitTime = now;
-                                    }
-                                }
-                            } else {
-                                accumulated += part.text;
-                            }
-                        }
-                    }
-                } catch (streamIterErr: unknown) {
-                    const msg = streamIterErr instanceof Error ? streamIterErr.message : String(streamIterErr);
-                    console.warn("[gen-ai-code] Gemini stream notice during iteration:", msg);
-                    // If stream closed with incomplete segment or reset but we accumulated enough valid JSON, proceed!
-                    if (!accumulated || accumulated.length < 50) {
-                        throw streamIterErr;
-                    }
-                    console.info(`[gen-ai-code] Resilient recovery: proceeding with accumulated buffer (${accumulated.length} bytes)`);
-                }
-
-                if (lastFinishReason === "MAX_TOKENS") {
-                    console.warn("[gen-ai-code] Gemini hit MAX_TOKENS limit; relying on structural parser & self-healing compiler gate.");
+                const accumulated = generationResult.text;
+                const activeModel = generationResult.modelUsed;
+                if (generationResult.finishReason === "MAX_TOKENS") {
+                    console.warn(`[gen-ai-code] ${activeModel} hit MAX_TOKENS limit; relying on structural parser & self-healing compiler gate.`);
                 }
 
                 // ── Parse the complete JSON response ──────────────────────────────────
@@ -479,8 +406,9 @@ export async function POST(req: NextRequest) {
 
                     try {
                         const repairPrompt = buildSyntaxRepairPrompt(syntaxErrors, fullFiles);
-                        const repairRes = await ai.models.generateContent({
-                            model: modelName,
+                        const repairResult = await generateGeminiContentWithFallback({
+                            client: ai.models,
+                            preferredModel: activeModel,
                             contents: [{ role: "user", parts: [{ text: repairPrompt }] }],
                             config: {
                                 systemInstruction: DIAGNOSTIC_FIX_SYSTEM_PROMPT,
@@ -490,7 +418,7 @@ export async function POST(req: NextRequest) {
                             },
                         });
 
-                        const repairRaw = repairRes.text || "";
+                        const repairRaw = repairResult.text || "";
                         if (!repairRaw.trim()) break;
 
                         const repairedParsed = parseLlmJson(repairRaw);
@@ -612,21 +540,7 @@ export async function POST(req: NextRequest) {
             } catch (err: unknown) {
                 console.error("[gen-ai-code] stream error:", err);
 
-                let errorMessage = "Something went wrong. Please try again.";
-                const errObj = err as {
-                    status?: number;
-                    message?: string;
-                    code?: string;
-                    cause?: { code?: string };
-                } | null;
-
-                if (errObj?.status === 429 || errObj?.message?.includes("429") || errObj?.message?.includes("quota")) {
-                    errorMessage = "You have exceeded your Gemini API rate limit (Free Tier). Please wait 60 seconds and try again.";
-                } else if (errObj?.status === 503 || errObj?.message?.includes("503")) {
-                    errorMessage = "The Gemini AI servers are currently experiencing high demand. Please try again in a few moments.";
-                } else if (errObj?.code === "ECONNRESET" || errObj?.cause?.code === "ECONNRESET" || errObj?.message?.includes("terminated")) {
-                    errorMessage = "The AI connection was interrupted. This can happen with complex generations. Please try again.";
-                }
+                const errorMessage = formatUserFacingGeminiError(err);
 
                 enqueue(
                     sseEvent("error", {
