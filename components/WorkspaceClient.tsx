@@ -6,6 +6,11 @@ import dynamic from "next/dynamic";
 
 const CodePanel = dynamic(() => import("./CodePanel").then((mod) => mod.CodePanel), {
     ssr: false,
+    loading: () => (
+        <div className="flex flex-1 items-center justify-center bg-[#0d0d12] text-xs font-mono text-zinc-500">
+            Loading workspace…
+        </div>
+    ),
 });
 
 import { MIN_CREDITS_TO_GENERATE } from "@/lib/constants";
@@ -164,7 +169,7 @@ export function WorkspaceClient({
             attachmentOrUrl?: AttachedFile[] | string,
             displayContent?: string
         ) => {
-            if (isGenerating) return;
+            if (isGenerating || isImproving) return;
             if (credits < MIN_CREDITS_TO_GENERATE) return;
 
             const isArray = Array.isArray(attachmentOrUrl);
@@ -259,6 +264,7 @@ export function WorkspaceClient({
                                 pushStep(event.message);
                             } else if (event.type === "done") {
                                 completeSteps();
+                                isManualEditRef.current = false;
                                 setWorkspaceId(event.workspaceId);
                                 setFileData(event.fileData);
                                 setCredits(event.creditsRemaining);
@@ -305,7 +311,7 @@ export function WorkspaceClient({
                 setStatusLog([]);
             }
         },
-        [credits, isGenerating, userId]
+        [credits, isGenerating, isImproving, userId]
         // fileData intentionally omitted — read via fileDataRef
     );
 
@@ -412,6 +418,7 @@ export function WorkspaceClient({
                                 localPatches[event.path] = { code: event.code };
                             } else if (event.type === "done") {
                                 // Apply all patches at once now that the stream is complete
+                                isManualEditRef.current = false;
                                 setFileData(event.fileData);
                                 setCredits(event.creditsRemaining);
                                 // Replace thinking text with clean summary
@@ -462,24 +469,29 @@ export function WorkspaceClient({
         improveAbortRef.current?.abort();
     }, []);
 
-    const handleFilePatch = useCallback((patches: FileData) => {
-        isManualEditRef.current = true;
-        setFileData((prev) => {
-            if (!prev) return patches;
-            return {
-                ...prev,
-                ...patches,
-                files: {
-                    ...prev.files,
-                    ...(patches.files || {}),
-                },
-                dependencies: {
-                    ...prev.dependencies,
-                    ...(patches.dependencies || {}),
-                }
-            };
-        });
-    }, []);
+    const handleFilePatch = useCallback(
+        (patches: FileData, options?: { replaceFiles?: boolean }) => {
+            isManualEditRef.current = true;
+            setFileData((prev) => {
+                if (!prev) return patches;
+                return {
+                    ...prev,
+                    ...patches,
+                    files: options?.replaceFiles
+                        ? { ...(patches.files || {}) }
+                        : {
+                            ...prev.files,
+                            ...(patches.files || {}),
+                        },
+                    dependencies: {
+                        ...prev.dependencies,
+                        ...(patches.dependencies || {}),
+                    },
+                };
+            });
+        },
+        []
+    );
 
 
     const toggleMobileView = useCallback(() => {
@@ -527,6 +539,7 @@ export function WorkspaceClient({
                     }`}
                 >
                     <CodePanel
+                        workspaceId={workspaceId}
                         fileData={fileData}
                         isGenerating={isGenerating}
                         statusLog={statusLog}

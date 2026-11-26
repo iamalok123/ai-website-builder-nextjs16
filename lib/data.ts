@@ -23,12 +23,12 @@ export const FEATURES = [
     {
         icon: Zap,
         label: "Instant generation",
-        desc: "Describe your app in plain English. Gemini 3.5 Flash returns production-ready React + Tailwind code in seconds.",
+        desc: "Describe your app in plain English. Gemini AI returns production-ready React, Tailwind, and backend code in seconds.",
     },
     {
         icon: Eye,
         label: "Live preview",
-        desc: "Your app renders instantly in the browser via Sandpack. No install, no build step — just a working preview.",
+        desc: "Your app boots instantly in an isolated cloud sandbox with live Vite HMR — no local setup required.",
     },
     {
         icon: Code2,

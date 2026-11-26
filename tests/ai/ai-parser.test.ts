@@ -237,4 +237,46 @@ describe("AI Code Generation & LLM JSON Parser", () => {
     expect(parsed.files["/src/App.jsx"].patches).toHaveLength(1);
     expect(parsed.files["/src/App.jsx"].patches?.[0].replace).toBe(`const msg = 'Type "help" now';`);
   });
+
+  it("should reject root App.jsx truncated before any JSX return statement even when braces parse cleanly", () => {
+    const truncatedGridCraftApp = `import React, { useState, useEffect } from 'react';
+import AuthScreen from './components/AuthScreen';
+export default function App() {
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('gc_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  useEffect(() => {
+    if (!user) return;
+  }, [user]);
+  const handleCreateSheet = () => {
+    const x = 1;
+  };
+}`;
+    const errors = validateProjectSyntax({
+      "/src/App.jsx": { code: truncatedGridCraftApp },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].path).toBe("/src/App.jsx");
+    expect(errors[0].message).toContain("no return statement");
+
+    const arrowApp = `const App = () => (<main>Ready</main>);\nexport default App;`;
+    expect(validateProjectSyntax({ "/src/App.jsx": { code: arrowApp } })).toEqual([]);
+  });
+
+  it("should prefer extractPartialLlmResponse when jsonrepair clips files due to unescaped quotes", () => {
+    const rawWithUnescapedQuoteAndMoreFiles = `{
+  "assistantMessage": "Built app",
+  "title": "Quote Recovery",
+  "files": {
+    "/src/BrokenBanner.jsx": { "code": "export function Banner() { return <div data-msg="hello">hi</div>; }" },
+    "/src/components/Card.jsx": { "code": "export function Card() { return <section>Card</section>; }" },
+    "/src/App.jsx": { "code": "import { Card } from './components/Card.jsx'; export default function App() { return <Card />; }" }
+  }
+}`;
+    const parsed = parseLlmJson(rawWithUnescapedQuoteAndMoreFiles);
+    expect(parsed.files["/src/components/Card.jsx"]).toBeDefined();
+    expect(parsed.files["/src/App.jsx"]).toBeDefined();
+    expect(isJsSyntaxValid(parsed.files["/src/App.jsx"].code ?? "", "/src/App.jsx")).toBe(true);
+  });
 });

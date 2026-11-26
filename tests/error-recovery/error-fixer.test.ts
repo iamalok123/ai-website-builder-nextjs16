@@ -207,4 +207,20 @@ CRITICAL FIX INSTRUCTIONS:`;
         expect(repairMsg).toContain("/src/App.jsx");
         expect(repairMsg).toContain('Unexpected token, expected ","');
     });
+
+    it("should flag root App.jsx with balanced braces but no JSX return tree", () => {
+        const blankAppData: FileData = {
+            title: "GridCraft",
+            dependencies: {},
+            files: {
+                "/src/App.jsx": {
+                    code: `import React, { useState } from 'react';\nexport default function App() {\n  const [u, setU] = useState(null);\n}`,
+                },
+            },
+        };
+        const issues = findSuspiciousProjectFiles(blankAppData);
+        expect(issues).toHaveLength(1);
+        expect(issues[0].path).toBe("/src/App.jsx");
+        expect(issues[0].reason).toContain("renders blank preview");
+    });
 });

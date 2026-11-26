@@ -36,9 +36,11 @@ CRITICAL ARCHITECTURAL CONVENTIONS & CONTEXT-AWARE INTELLIGENCE:
 
 3. FULL-STACK PERSISTENCE & OPTIMISTIC UI:
    - Provide a complete, concise Express backend in /server.js running on port 3001 with CORS (keep /server.js under 80 lines).
+   - STRICT ESM SYNTAX FOR /server.js: package.json uses "type": "module". ALWAYS use ES module imports (import express from 'express'; import cors from 'cors'; import fs from 'node:fs'; import path from 'node:path';) — NEVER use require(), module.exports, or bare __dirname without import.meta.url.
    - Use Node.js built-in fs module to read and write './database.json'.
    - Initialize './database.json' on server startup if not present using data from /src/data/mockData.js. NEVER hardcode large arrays directly in /server.js to prevent token exhaustion!
    - Provide clean REST API endpoints on /api/... with express.json() supporting GET, POST, PUT, DELETE.
+   - RELATIVE API FETCH PATHS ONLY: In all React frontend components, ALWAYS call fetch('/api/...') with relative paths (Vite automatically proxies /api/* to port 3001). NEVER hardcode 'http://localhost:3001/api/...', which fails in remote browser previews.
    - OPTIMISTIC UI UPDATES: For every user action (add, edit, toggle, delete, check-in, checkout), update React state instantaneously (0ms latency), display an interactive toast notification, and synchronize asynchronously to /api/... in the background.
 
 4. DESIGN SYSTEM & LUXURY VISUAL POLISH:
@@ -61,6 +63,7 @@ CRITICAL ARCHITECTURAL CONVENTIONS & CONTEXT-AWARE INTELLIGENCE:
    - CRITICAL TOKEN BUDGET & 100% COMPLETION RULE:
      * Never exhaust token capacity by generating dozens of bloated micro-files. Target 7 to 10 complete, production-grade files.
      * Every single file MUST be 100% complete and fully closed. Every opened JSX tag, curly brace, parenthesis, and string literal must have its matching closing tag. Never leave any file cut off or truncated mid-JSX tag.
+     * Always emit a complete JSX return (...) block in /src/App.jsx BEFORE writing child files or finishing generation.
 
 6. RULES & OUTPUT FORMAT:
    - Always return a valid JSON object matching the exact schema below — no conversational preamble, no markdown fences.
@@ -124,7 +127,8 @@ STRICT REPAIR RULES:
    - Preserve all existing features, UI styling, state variables, hooks, prop names, exports, and component APIs expected by sibling files.
 2. ALWAYS RETURN FULL COMPLETE "code" (NEVER USE "patches"):
    - Corrupted or truncated files cannot be reliably patched by search/replace. Every entry in "files" MUST use { "code": "<100% complete valid file code>" }.
-   - Restore any cut-off functions, JSX return trees, HTML template literals, arrays, objects, or exports cleanly with zero TODOs or placeholder stubs.
+   - Restore any cut-off functions, missing /src/App.jsx JSX return trees, HTML template literals, arrays, objects, or exports cleanly with zero TODOs or placeholder stubs.
+   - For /server.js, always use ES modules (import express from 'express') rather than require(), and use relative '/api/...' fetch URLs in React components rather than 'http://localhost:3001'.
 3. STRICT SYNTAX & JSON ESCAPING:
    - Verify mentally that every JS/JSX/TS/TSX/JSON file parses with zero Babel/Vite errors: balanced braces/brackets/parentheses, closed JSX tags, closed template literals, valid imports/exports.
    - Inside JSON string values ("code", "assistantMessage"), EVERY double-quote (") inside JS code (even inside single-quoted strings like 'Type \\"help\\"', template literals like \`Git push: \\"\${msg}\\"\`, or HTML attributes) MUST be properly escaped as \\".

@@ -3,8 +3,8 @@
 import * as React from "react";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 
-// Suppress React 19 false-positive warning for next-themes' theme flash prevention script
-if (typeof window !== "undefined") {
+// Suppress React 19 false-positive warning for next-themes' theme flash prevention script in dev only
+if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
     const originalError = console.error;
     console.error = (...args: unknown[]) => {
         if (

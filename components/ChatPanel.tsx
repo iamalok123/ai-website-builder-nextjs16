@@ -35,11 +35,15 @@ import { toast } from "sonner";
 
 
 
+let cachedSupabaseClient: ReturnType<typeof createClient> | null = null;
+
 function getSupabaseClient() {
+    if (cachedSupabaseClient) return cachedSupabaseClient;
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!url || !key) return null;
-    return createClient(url, key);
+    cachedSupabaseClient = createClient(url, key);
+    return cachedSupabaseClient;
 }
 
 interface DiagnosticDetails {
@@ -273,9 +277,9 @@ export function ChatPanel({
             return;
 
         // Check if there are pending files and prompt passed from the home screen
-        const pendingRaw = typeof window !== "undefined" ? sessionStorage.getItem("zephyre_pending_project") : null;
-        if (pendingRaw) {
-            try {
+        try {
+            const pendingRaw = typeof window !== "undefined" ? sessionStorage.getItem("zephyre_pending_project") : null;
+            if (pendingRaw) {
                 const pending = JSON.parse(pendingRaw);
                 sessionStorage.removeItem("zephyre_pending_project");
                 if (pending.prompt) {
@@ -283,8 +287,8 @@ export function ChatPanel({
                     onGenerate(pending.prompt, pending.attachedFiles);
                     return;
                 }
-            } catch {}
-        }
+            }
+        } catch {}
 
         if (initialPrompt) {
             hasAutoSubmittedRef.current = true;

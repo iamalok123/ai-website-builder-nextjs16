@@ -1,32 +1,26 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "./prisma";
 import { PLANS } from "./constants";
-import { Plan } from "../types/plans"
-
-
-const getCurrentPlan = async (): Promise<Plan> => {
-    const { has } = await auth();
-    if (has({ plan: "pro" })) return "pro";
-    if (has({ plan: "standard" })) return "standard";
-    return "free";
-};
+import { Plan } from "../types/plans";
 
 
 export const checkUser = async () => {
-    const user = await currentUser();
-    if (!user) return null;
+    const { userId: clerkId, has } = await auth();
+    if (!clerkId) return null;
+
+    const currentPlan: Plan = has({ plan: "pro" })
+        ? "pro"
+        : has({ plan: "standard" })
+        ? "standard"
+        : "free";
 
     try {
-        const currentPlan = await getCurrentPlan();
-
         const existing = await db.user.findUnique({
-            where: { clerkId: user.id },
+            where: { clerkId },
         });
 
-        // If a user already Exists in out DB
+        // If a user already exists in DB, avoid a remote Clerk currentUser() API call
         if (existing) {
-
-            // And the existing user changed the plan
             if (existing.plan !== currentPlan) {
                 // Only top up credits on upgrade (positive delta), not on downgrade
                 const existingPlanCredits = PLANS[existing.plan as Plan]?.credits ?? 0;
@@ -36,7 +30,7 @@ export const checkUser = async () => {
                 // Use updateMany with the old plan in the where clause to prevent
                 // race conditions from double-crediting on concurrent requests
                 await db.user.updateMany({
-                    where: { clerkId: user.id, plan: existing.plan },
+                    where: { clerkId, plan: existing.plan },
                     data: {
                         plan: currentPlan,
                         credits:
@@ -47,11 +41,15 @@ export const checkUser = async () => {
                 });
 
                 // Re-fetch and return the updated record
-                return await db.user.findUnique({ where: { clerkId: user.id } });
+                return await db.user.findUnique({ where: { clerkId } });
             }
 
             return existing;
         }
+
+        // Only fetch full Clerk profile when provisioning a brand-new user record
+        const user = await currentUser();
+        if (!user) return null;
 
         const name =
             `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() ||
@@ -59,24 +57,24 @@ export const checkUser = async () => {
             "User";
         const email =
             user.emailAddresses?.[0]?.emailAddress ||
-            `${user.id}@clerk.local`;
+            `${clerkId}@clerk.local`;
 
-        // New user — create with free plan credits
+        // New user — create with free plan credits (or active plan if newly assigned)
         return await db.user.create({
             data: {
-                clerkId: user.id,
+                clerkId,
                 name,
                 email,
                 imageUrl: user.imageUrl ?? "",
-                credits: PLANS.free.credits,
-                plan: "free",
+                credits: PLANS[currentPlan].credits,
+                plan: currentPlan,
             },
         });
     } catch (error) {
         console.error("checkUser error:", error);
         // Resilient fallback: If user was created concurrently, fetch and return it
         try {
-            return await db.user.findUnique({ where: { clerkId: user.id } });
+            return await db.user.findUnique({ where: { clerkId } });
         } catch {
             return null;
         }

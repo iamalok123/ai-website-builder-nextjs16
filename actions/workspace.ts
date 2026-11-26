@@ -3,11 +3,27 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { db } from "@/lib/prisma";
 import { checkUser } from "@/lib/checkUser";
 import type { WorkspaceUser, WorkspaceData, FileData } from "@/types/workspace";
 
 export type { WorkspaceUser, WorkspaceData } from "@/types/workspace";
+
+const WorkspaceFileDataSchema = z.object({
+    files: z
+        .record(
+            z.string().min(1).max(260),
+            z.object({
+                code: z.string(),
+            })
+        )
+        .refine((files) => Object.keys(files).length <= 200, {
+            message: "Too many files in workspace payload",
+        }),
+    dependencies: z.record(z.string(), z.string()).optional().default({}),
+    title: z.string().max(200).optional(),
+});
 
 // ─── Get the current authenticated user ──────────────────────────────────────
 
@@ -48,34 +64,19 @@ export async function getWorkspaceUser(): Promise<WorkspaceUser> {
 
 export async function getWorkspaceById(
     workspaceId: string,
-    userId?: string
+    expectedUserId?: string
 ): Promise<WorkspaceData & { userId?: string }> {
     const { userId: clerkId } = await auth();
     if (!clerkId) redirect("/");
 
-    let effectiveUserId = userId;
-    if (!effectiveUserId) {
-        const user = await db.user.findUnique({
-            where: { clerkId },
-            select: { id: true },
-        });
-        if (!user) redirect("/");
-        effectiveUserId = user.id;
-    } else {
-        // Verify provided userId matches authenticated clerkId
-        const user = await db.user.findUnique({
-            where: { clerkId },
-            select: { id: true },
-        });
-        if (!user || user.id !== effectiveUserId) {
-            redirect("/projects");
-        }
-    }
-
     let workspace = null;
     try {
-        workspace = await db.workspace.findUnique({
-            where: { id_userId: { id: workspaceId, userId: effectiveUserId } },
+        // Single relational query enforces Clerk identity without a redundant user lookup
+        workspace = await db.workspace.findFirst({
+            where: {
+                id: workspaceId,
+                user: { clerkId },
+            },
             select: {
                 id: true,
                 title: true,
@@ -89,7 +90,9 @@ export async function getWorkspaceById(
         throw err;
     }
 
-    if (!workspace) redirect("/projects");
+    if (!workspace || (expectedUserId && workspace.userId !== expectedUserId)) {
+        redirect("/projects");
+    }
 
     return workspace;
 }
@@ -104,6 +107,14 @@ export async function updateWorkspaceFileData(
     const { userId: clerkId } = await auth();
     if (!clerkId) return; // Must be authenticated
 
+    if (!workspaceId || !userId) return;
+
+    const validated = WorkspaceFileDataSchema.safeParse(fileData);
+    if (!validated.success) {
+        console.warn("[updateWorkspaceFileData] Rejected malformed fileData payload:", validated.error.flatten());
+        return;
+    }
+
     // Verify the caller owns this workspace via their Clerk ID
     const user = await db.user.findUnique({
         where: { clerkId },
@@ -114,7 +125,7 @@ export async function updateWorkspaceFileData(
     try {
         await db.workspace.update({
             where: { id_userId: { id: workspaceId, userId } },
-            data: { fileData: fileData as never },
+            data: { fileData: validated.data as never },
         });
         revalidatePath("/projects");
     } catch (e) {

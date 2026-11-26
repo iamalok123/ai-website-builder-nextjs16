@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
     isSafeExternalUrl,
     isAllowedE2bProxyHost,
+    isTrustedPreviewOrigin,
+    extractE2bSandboxIdFromHost,
     sanitizeSandboxPath,
 } from "@/lib/security";
 
@@ -75,6 +77,22 @@ describe("Security Hardening & Guardrails", () => {
             expect(sanitizeSandboxPath('src/" && rm -rf / ;')).toBeNull();
             expect(sanitizeSandboxPath("src\\App.jsx")).toBeNull();
             expect(sanitizeSandboxPath("src/$(whoami).js")).toBeNull();
+        });
+    });
+
+    describe("Preview Origin & Sandbox Host Parsing", () => {
+        it("should accept trusted E2B preview origins and matching app origin", () => {
+            expect(isTrustedPreviewOrigin("https://3000-i3s07nzhakjjvvkoih2b3.e2b.app", "https://zephyre.app")).toBe(true);
+            expect(isTrustedPreviewOrigin("https://zephyre.app", "https://zephyre.app")).toBe(true);
+            expect(isTrustedPreviewOrigin("https://evil.com", "https://zephyre.app")).toBe(false);
+            expect(isTrustedPreviewOrigin("https://attacker-e2b.dev.fake.com", "https://zephyre.app")).toBe(false);
+            expect(isTrustedPreviewOrigin("null", "https://zephyre.app")).toBe(false);
+        });
+
+        it("should extract E2B sandbox IDs from preview hostnames", () => {
+            expect(extractE2bSandboxIdFromHost("3000-i3s07nzhakjjvvkoih2b3.e2b.app")).toBe("i3s07nzhakjjvvkoih2b3");
+            expect(extractE2bSandboxIdFromHost("my_sandbox.e2b.dev")).toBe("my_sandbox");
+            expect(extractE2bSandboxIdFromHost("evil.com")).toBeNull();
         });
     });
 });

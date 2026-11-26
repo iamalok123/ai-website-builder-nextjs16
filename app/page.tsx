@@ -98,13 +98,17 @@ export default function Home() {
   const handleSubmit = () => {
     if (!prompt.trim() || !isSignedIn) return;
     if (attachedFiles.length > 0) {
-      sessionStorage.setItem(
-        "zephyre_pending_project",
-        JSON.stringify({
-          prompt: prompt.trim(),
-          attachedFiles,
-        })
-      );
+      try {
+        sessionStorage.setItem(
+          "zephyre_pending_project",
+          JSON.stringify({
+            prompt: prompt.trim(),
+            attachedFiles,
+          })
+        );
+      } catch {
+        // Ignore sessionStorage restrictions in private/constrained browsers
+      }
     }
     router.push(`/workspace?prompt=${encodeURIComponent(prompt.trim())}`);
   };

@@ -1,4 +1,4 @@
-import { Sandbox } from "e2b";
+import { NotFoundError, Sandbox, SandboxNotFoundError } from "e2b";
 import type { FileData } from "@/types/workspace";
 
 /**
@@ -80,7 +80,10 @@ export async function pruneStaleSandboxes(keepCount = 10): Promise<number> {
  * Creates an isolated E2B cloud sandbox instance with public web traffic enabled.
  * Automatically self-heals by pruning stale sandboxes if concurrent limit (20) is approached.
  */
-export async function createE2bSandbox(timeoutMs = E2B_SANDBOX_TIMEOUT_MS): Promise<Sandbox> {
+export async function createE2bSandbox(
+    timeoutMs = E2B_SANDBOX_TIMEOUT_MS,
+    ownerId?: string
+): Promise<Sandbox> {
     const apiKey = getE2bApiKey();
     const createConfig = {
         apiKey,
@@ -101,6 +104,7 @@ export async function createE2bSandbox(timeoutMs = E2B_SANDBOX_TIMEOUT_MS): Prom
         metadata: {
             app: "zephyre",
             timestamp: new Date().toISOString(),
+            ...(ownerId ? { ownerId } : {}),
         },
     };
 
@@ -120,6 +124,33 @@ export async function createE2bSandbox(timeoutMs = E2B_SANDBOX_TIMEOUT_MS): Prom
             await pruneStaleSandboxes(8);
             await new Promise((res) => setTimeout(res, 500));
             return await Sandbox.create(createConfig);
+        }
+        throw err;
+    }
+}
+
+/**
+ * Verifies that the requested E2B sandbox exists and belongs to the authenticated Clerk user.
+ */
+export async function verifySandboxOwnership(
+    sandboxId: string,
+    ownerId: string
+): Promise<"authorized" | "forbidden" | "not_found"> {
+    const apiKey = getE2bApiKey();
+    try {
+        const info = await Sandbox.getInfo(sandboxId, { apiKey });
+        const metadataOwner = info?.metadata?.ownerId;
+        if (!metadataOwner || metadataOwner !== ownerId) {
+            return "forbidden";
+        }
+        return "authorized";
+    } catch (err: unknown) {
+        if (err instanceof SandboxNotFoundError || err instanceof NotFoundError) {
+            return "not_found";
+        }
+        const errMsg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+        if (errMsg.includes("not found") || errMsg.includes("404")) {
+            return "not_found";
         }
         throw err;
     }
@@ -165,6 +196,7 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     allowedHosts: true,
+    cors: true,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3001',
@@ -174,7 +206,7 @@ export default defineConfig({
     watch: {
       usePolling: true,
       interval: 100,
-      ignored: ['**/node_modules/**', '**/.git/**'],
+      ignored: ['**/node_modules/**', '**/.git/**', '**/database.json', '**/database.sqlite*', '**/*.log'],
     },
     hmr: {
       clientPort: 443,
@@ -186,9 +218,31 @@ export default defineConfig({
 export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
 <script id="zephyre-error-bridge">
 (function() {
+  // Guard against SecurityError when third-party cookies / storage are blocked in iframe
+  try {
+    var _lsTest = '__zephyre_ls_test__';
+    window.localStorage.setItem(_lsTest, '1');
+    window.localStorage.removeItem(_lsTest);
+  } catch (lsErr) {
+    try {
+      var _memStore = {};
+      var _memStorage = {
+        getItem: function(k) { return Object.prototype.hasOwnProperty.call(_memStore, k) ? _memStore[k] : null; },
+        setItem: function(k, v) { _memStore[String(k)] = String(v); },
+        removeItem: function(k) { delete _memStore[String(k)]; },
+        clear: function() { _memStore = {}; },
+        key: function(i) { return Object.keys(_memStore)[i] || null; },
+        get length() { return Object.keys(_memStore).length; }
+      };
+      Object.defineProperty(window, 'localStorage', { value: _memStorage, configurable: true });
+    } catch (e2) {}
+  }
+
   var lastErrorKey = '';
   function sendError(data) {
     if (!data || !data.message) return;
+    window.__zephyre_last_error = data.message;
+    window.__zephyre_error_caught = true;
     var key = (data.file || '') + ':' + (data.line || '') + ':' + data.message;
     if (key === lastErrorKey) return;
     lastErrorKey = key;
@@ -207,6 +261,8 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
   }
 
   function clearError() {
+    window.__zephyre_last_error = '';
+    window.__zephyre_error_caught = false;
     if (lastErrorKey) {
       lastErrorKey = '';
       try {
@@ -379,6 +435,10 @@ export const ZEPHYRE_ERROR_BRIDGE_SCRIPT = `
       return ws;
     };
     window.WebSocket.prototype = OrigWebSocket.prototype;
+    window.WebSocket.CONNECTING = OrigWebSocket.CONNECTING;
+    window.WebSocket.OPEN = OrigWebSocket.OPEN;
+    window.WebSocket.CLOSING = OrigWebSocket.CLOSING;
+    window.WebSocket.CLOSED = OrigWebSocket.CLOSED;
   }
 
   // 3. Global runtime and promise rejection catchers (capturing phase catches resource load failures)
@@ -510,14 +570,74 @@ export const ZEPHYRE_INITIAL_LOADER = `
 `.trim();
 
 export const ZEPHYRE_HMR_REPORTER_CODE = `
-// Live mount handshake and HMR compilation error reporter for Zephyre IDE
-if (typeof window !== 'undefined') {
-  window.__zephyre_mounted = true;
-  try {
-    window.parent.postMessage({ source: 'zephyre-preview-mounted' }, '*');
-    var initLoader = document.getElementById('zephyre-initial-loader');
-    if (initLoader) initLoader.remove();
-  } catch(e) {}
+// Live mount verification and HMR compilation error reporter for Zephyre IDE
+class ZephyreErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, message: '' };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, message: (error && error.message) ? error.message : 'Application render error' };
+  }
+  componentDidCatch(error, info) {
+    try {
+      window.__zephyre_error_caught = true;
+      window.__zephyre_last_error = this.state.message;
+      var loader = document.getElementById('zephyre-initial-loader');
+      if (loader) loader.remove();
+      window.parent.postMessage({
+        source: 'zephyre-preview-error',
+        category: 'runtime',
+        message: this.state.message,
+        file: 'src/App.jsx',
+        stack: [error && error.stack, info && info.componentStack].filter(Boolean).join('\\n')
+      }, '*');
+    } catch (e) {}
+  }
+  render() {
+    if (this.state.hasError) {
+      return React.createElement(
+        'div',
+        { style: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#09090b', color: '#fca5a5', fontFamily: 'system-ui, sans-serif', padding: '24px' } },
+        React.createElement(
+          'div',
+          { style: { maxWidth: '520px', background: '#18181b', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '14px', padding: '20px' } },
+          React.createElement('h3', { style: { fontWeight: 700, fontSize: '16px', marginBottom: '8px' } }, 'Application Render Error'),
+          React.createElement('p', { style: { fontSize: '13px', color: '#a1a1aa', fontFamily: 'monospace', wordBreak: 'break-word' } }, this.state.message)
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function zephyreVerifyRenderedRoot(rootElement) {
+  if (typeof window === 'undefined' || !rootElement) return;
+  setTimeout(() => {
+    try {
+      var initLoader = document.getElementById('zephyre-initial-loader');
+      if (initLoader) initLoader.remove();
+      if (window.__zephyre_error_caught) return;
+
+      var hasDom = rootElement.children.length > 0 || (rootElement.textContent || '').trim().length > 0;
+      if (!hasDom) {
+        var emptyMsg = 'Root component <App /> rendered empty content (missing JSX return or empty output).';
+        window.__zephyre_last_error = emptyMsg;
+        window.parent.postMessage({
+          source: 'zephyre-preview-error',
+          category: 'runtime',
+          message: emptyMsg,
+          file: 'src/App.jsx',
+          stack: emptyMsg
+        }, '*');
+        rootElement.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#09090b;color:#f87171;font-family:system-ui,sans-serif;padding:24px;"><div style="max-width:520px;background:#18181b;border:1px solid rgba(239,68,68,0.3);border-radius:14px;padding:20px;"><h3 style="font-weight:700;color:#fca5a5;margin:0 0 8px;font-size:16px;">Empty Application Output</h3><p style="font-size:13px;color:#a1a1aa;margin:0 0 14px;">The root App component returned no UI elements. Use Fix now in the workspace to restore the layout.</p><button onclick="location.reload()" style="padding:8px 14px;background:#f97316;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">Reload Preview</button></div></div>';
+        return;
+      }
+
+      window.__zephyre_mounted = true;
+      window.parent.postMessage({ source: 'zephyre-preview-mounted' }, '*');
+    } catch(e) {}
+  }, 450);
 }
 
 if (import.meta.hot) {
@@ -551,11 +671,9 @@ if (import.meta.hot) {
 }
 `.trim();
 
-export const SQLITE_SHIM_CODE = `
-import fs from 'node:fs';
-import path from 'node:path';
-
-export class DatabaseSync {
+function buildDatabaseSyncClassBody(): string {
+    return `
+class DatabaseSync {
   constructor(filename = './database.sqlite') {
     this.jsonFile = filename.endsWith('.json') ? filename : filename.replace(/\\.[^.]+$/, '') + '.json';
     this.store = {};
@@ -576,15 +694,121 @@ export class DatabaseSync {
     }
   }
 
+  pragma() {}
+  close() {}
+
+  _coerceLiteral(raw) {
+    const t = raw.trim();
+    if ((t.startsWith("'") && t.endsWith("'")) || (t.startsWith('"') && t.endsWith('"'))) {
+      return t.slice(1, -1);
+    }
+    if (/^null$/i.test(t)) return null;
+    if (/^true$/i.test(t)) return true;
+    if (/^false$/i.test(t)) return false;
+    if (/^-?\\d+(?:\\.\\d+)?$/.test(t)) return Number(t);
+    return t;
+  }
+
+  _valuesEqual(rowVal, targetVal) {
+    if (rowVal === undefined || rowVal === null) {
+      return targetVal === undefined || targetVal === null;
+    }
+    if (targetVal === undefined || targetVal === null) return false;
+    if (typeof rowVal === 'boolean') {
+      if (typeof targetVal === 'boolean') return rowVal === targetVal;
+      if (targetVal === 1 || targetVal === '1' || targetVal === 'true') return rowVal === true;
+      if (targetVal === 0 || targetVal === '0' || targetVal === 'false') return rowVal === false;
+    }
+    if (typeof targetVal === 'boolean') {
+      if (rowVal === 1 || rowVal === '1') return targetVal === true;
+      if (rowVal === 0 || rowVal === '0') return targetVal === false;
+    }
+    if (
+      (typeof rowVal === 'number' || (typeof rowVal === 'string' && /^-?\\d+(?:\\.\\d+)?$/.test(rowVal.trim()))) &&
+      (typeof targetVal === 'number' || (typeof targetVal === 'string' && /^-?\\d+(?:\\.\\d+)?$/.test(targetVal.trim())))
+    ) {
+      return Number(rowVal) === Number(targetVal);
+    }
+    return String(rowVal) === String(targetVal);
+  }
+
+  _filterRows(rows, sql, args, initialArgOffset = 0) {
+    const whereMatch = sql.match(/\\bWHERE\\b\\s+([\\s\\S]+?)(?:\\bORDER\\s+BY\\b|\\bGROUP\\s+BY\\b|\\bLIMIT\\b|\\bOFFSET\\b|;|$)/i);
+    if (!whereMatch) {
+      return { filtered: [...rows], nextArgIndex: initialArgOffset };
+    }
+    let argIdx = initialArgOffset;
+    const clauses = whereMatch[1].trim().split(/\\s+AND\\s+/i);
+    const predicates = clauses.map((clause) => {
+      const likeParam = clause.match(/^(?:[a-zA-Z0-9_]+\\.)?([a-zA-Z0-9_]+)\\s+LIKE\\s+\\?$/i);
+      if (likeParam) {
+        const col = likeParam[1];
+        const pattern = String(args[argIdx++] ?? '').replace(/[-\\/\\\\^$*+?.()|[\\]{}]/g, '\\\\$&').replace(/%/g, '.*').replace(/_/g, '.');
+        const re = new RegExp('^' + pattern + '$', 'i');
+        return (r) => re.test(String(r[col] ?? ''));
+      }
+      const eqParam = clause.match(/^(?:[a-zA-Z0-9_]+\\.)?([a-zA-Z0-9_]+)\\s*=\\s*\\?$/i);
+      if (eqParam) {
+        const col = eqParam[1];
+        const expected = args[argIdx++];
+        return (r) => this._valuesEqual(r[col], expected);
+      }
+      const eqLiteral = clause.match(/^(?:[a-zA-Z0-9_]+\\.)?([a-zA-Z0-9_]+)\\s*=\\s*(.+)$/i);
+      if (eqLiteral) {
+        const col = eqLiteral[1];
+        const expected = this._coerceLiteral(eqLiteral[2]);
+        return (r) => this._valuesEqual(r[col], expected);
+      }
+      return () => true;
+    });
+    const filtered = rows.filter((row) => predicates.every((fn) => fn(row)));
+    return { filtered, nextArgIndex: argIdx };
+  }
+
+  _applyOrderAndLimit(rows, sql, args, argOffset) {
+    let result = [...rows];
+    let idx = argOffset;
+    const orderMatch = sql.match(/\\bORDER\\s+BY\\s+(?:[a-zA-Z0-9_]+\\.)?([a-zA-Z0-9_]+)(?:\\s+(ASC|DESC))?/i);
+    if (orderMatch) {
+      const col = orderMatch[1];
+      const desc = (orderMatch[2] || 'ASC').toUpperCase() === 'DESC';
+      result.sort((a, b) => {
+        const av = a[col];
+        const bv = b[col];
+        if (av == null && bv == null) return 0;
+        if (av == null) return desc ? 1 : -1;
+        if (bv == null) return desc ? -1 : 1;
+        if (typeof av === 'number' && typeof bv === 'number') {
+          return desc ? bv - av : av - bv;
+        }
+        const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true });
+        return desc ? -cmp : cmp;
+      });
+    }
+    const limitMatch = sql.match(/\\bLIMIT\\s+(\\?|\\d+)(?:\\s+OFFSET\\s+(\\?|\\d+))?/i);
+    if (limitMatch) {
+      const rawLimit = limitMatch[1] === '?' ? Number(args[idx++]) : Number(limitMatch[1]);
+      const rawOffset = limitMatch[2] ? (limitMatch[2] === '?' ? Number(args[idx++]) : Number(limitMatch[2])) : 0;
+      const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
+      const limit = Number.isFinite(rawLimit) && rawLimit >= 0 ? rawLimit : result.length;
+      result = result.slice(offset, offset + limit);
+    }
+    return result;
+  }
+
   exec(sql) {
-    const match = sql.match(/CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?([a-zA-Z0-9_]+)/i);
-    if (match && match[1]) {
-      const table = match[1].toLowerCase();
-      if (!this.store[table]) {
-        this.store[table] = [];
-        this._persist();
+    const matches = [...sql.matchAll(/CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?([a-zA-Z0-9_]+)/gi)];
+    let changed = false;
+    for (const match of matches) {
+      if (match[1]) {
+        const table = match[1].toLowerCase();
+        if (!this.store[table]) {
+          this.store[table] = [];
+          changed = true;
+        }
       }
     }
+    if (changed) this._persist();
   }
 
   prepare(sql) {
@@ -594,20 +818,26 @@ export class DatabaseSync {
     if (/^SELECT/i.test(trimmed)) {
       const match = trimmed.match(/FROM\\s+([a-zA-Z0-9_]+)/i);
       const table = match ? match[1].toLowerCase() : 'items';
+      const countMatch = trimmed.match(/^SELECT\\s+COUNT\\s*\\([^)]*\\)(?:\\s+AS\\s+([a-zA-Z0-9_]+))?/i);
       return {
         all(...args) {
           const rows = self.store[table] || [];
-          if (/WHERE\\s+id\\s*=\\s*\\?/i.test(trimmed) && args.length > 0) {
-            return rows.filter(r => Number(r.id) === Number(args[0]));
+          const { filtered, nextArgIndex } = self._filterRows(rows, trimmed, args, 0);
+          if (countMatch) {
+            const alias = countMatch[1] || 'count';
+            return [{ [alias]: filtered.length }];
           }
-          return [...rows];
+          return self._applyOrderAndLimit(filtered, trimmed, args, nextArgIndex);
         },
         get(...args) {
           const rows = self.store[table] || [];
-          if (/WHERE\\s+id\\s*=\\s*\\?/i.test(trimmed) && args.length > 0) {
-            return rows.find(r => Number(r.id) === Number(args[0])) || null;
+          const { filtered, nextArgIndex } = self._filterRows(rows, trimmed, args, 0);
+          if (countMatch) {
+            const alias = countMatch[1] || 'count';
+            return { [alias]: filtered.length };
           }
-          return rows[0] || null;
+          const ordered = self._applyOrderAndLimit(filtered, trimmed, args, nextArgIndex);
+          return ordered[0] || null;
         },
         run() { return { changes: 0 }; }
       };
@@ -617,14 +847,23 @@ export class DatabaseSync {
       const match = trimmed.match(/INTO\\s+([a-zA-Z0-9_]+)\\s*\\(([^)]+)\\)/i);
       const table = match ? match[1].toLowerCase() : 'items';
       const cols = match ? match[2].split(',').map(c => c.trim()) : [];
+      const valuesMatch = trimmed.match(/VALUES\\s*\\(([^)]+)\\)/i);
+      const valueExprs = valuesMatch ? valuesMatch[1].split(',').map(v => v.trim()) : [];
       return {
         run(...args) {
           if (!self.store[table]) self.store[table] = [];
           const rows = self.store[table];
           const nextId = rows.length > 0 ? Math.max(...rows.map(r => Number(r.id) || 0)) + 1 : 1;
           const newRow = { id: nextId };
+          let argIdx = 0;
           cols.forEach((col, idx) => {
-            newRow[col] = args[idx] !== undefined ? args[idx] : null;
+            const expr = valueExprs[idx];
+            if (!expr || expr === '?') {
+              newRow[col] = args[argIdx] !== undefined ? args[argIdx] : null;
+              argIdx++;
+            } else {
+              newRow[col] = self._coerceLiteral(expr);
+            }
           });
           newRow.created_at = newRow.created_at || new Date().toISOString();
           rows.push(newRow);
@@ -639,22 +878,36 @@ export class DatabaseSync {
     if (/^UPDATE/i.test(trimmed)) {
       const match = trimmed.match(/UPDATE\\s+([a-zA-Z0-9_]+)/i);
       const table = match ? match[1].toLowerCase() : 'items';
+      const setMatch = trimmed.match(/\\bSET\\s+([\\s\\S]+?)(?:\\s+\\bWHERE\\b|$)/i);
+      const assignments = setMatch ? setMatch[1].split(',').map(s => s.trim()) : [];
       return {
         run(...args) {
           const rows = self.store[table] || [];
-          const id = Number(args[args.length - 1]);
-          const row = rows.find(r => Number(r.id) === id);
-          if (row) {
-            const setMatches = [...trimmed.matchAll(/([a-zA-Z0-9_]+)\\s*=\\s*\\?/gi)];
-            setMatches.forEach((m, idx) => {
-              if (idx < args.length - 1) {
-                row[m[1]] = args[idx];
-              }
-            });
-            self._persist();
-            return { changes: 1 };
+          let argIdx = 0;
+          const updates = [];
+          for (const part of assignments) {
+            const m = part.match(/^([a-zA-Z0-9_]+)\\s*=\\s*(.+)$/);
+            if (!m) continue;
+            const col = m[1];
+            const rhs = m[2].trim();
+            if (rhs === '?') {
+              const val = args[argIdx++];
+              updates.push((row) => { row[col] = val; });
+            } else if (/^NOT\\s+/i.test(rhs)) {
+              updates.push((row) => { row[col] = row[col] ? 0 : 1; });
+            } else {
+              const literalVal = self._coerceLiteral(rhs);
+              updates.push((row) => { row[col] = literalVal; });
+            }
           }
-          return { changes: 0 };
+          const { filtered } = self._filterRows(rows, trimmed, args, argIdx);
+          if (filtered.length > 0) {
+            for (const row of filtered) {
+              for (const applyFn of updates) applyFn(row);
+            }
+            self._persist();
+          }
+          return { changes: filtered.length };
         },
         all() { return []; },
         get() { return null; }
@@ -667,14 +920,19 @@ export class DatabaseSync {
       return {
         run(...args) {
           if (!self.store[table]) return { changes: 0 };
-          if (/WHERE\\s+id\\s*=\\s*\\?/i.test(trimmed) && args.length > 0) {
-            const id = Number(args[0]);
-            self.store[table] = self.store[table].filter(r => Number(r.id) !== id);
-          } else if (/WHERE\\s+completed\\s*=\\s*1/i.test(trimmed)) {
-            self.store[table] = self.store[table].filter(r => !r.completed);
+          const rows = self.store[table];
+          if (!/\\bWHERE\\b/i.test(trimmed)) {
+            const count = rows.length;
+            self.store[table] = [];
+            if (count > 0) self._persist();
+            return { changes: count };
           }
+          const { filtered } = self._filterRows(rows, trimmed, args, 0);
+          if (filtered.length === 0) return { changes: 0 };
+          const toDelete = new Set(filtered);
+          self.store[table] = rows.filter((r) => !toDelete.has(r));
           self._persist();
-          return { changes: 1 };
+          return { changes: toDelete.size };
         },
         all() { return []; },
         get() { return null; }
@@ -687,8 +945,82 @@ export class DatabaseSync {
       get() { return null; }
     };
   }
+}`.trim();
 }
+
+export const SQLITE_SHIM_CODE = `
+import fs from 'node:fs';
+
+export ${buildDatabaseSyncClassBody()}
 `.trim();
+
+export const SQLITE_SHIM_CJS_CODE = `
+const fs = require('node:fs');
+
+${buildDatabaseSyncClassBody()}
+
+module.exports = { DatabaseSync };
+`.trim();
+
+/**
+ * Rewrites hardcoded localhost:3001 backend URLs in client source files to relative /api
+ * paths so browser previews route cleanly through Vite's /api proxy.
+ */
+export function normalizeClientApiUrls(code: string): string {
+    return code
+        .replace(/https?:\/\/(?:localhost|127\.0\.0\.1):3001(?=\/api\b)/g, "")
+        .replace(/(['"`])https?:\/\/(?:localhost|127\.0\.0\.1):3001\1/g, "$1$1");
+}
+
+/**
+ * Detects whether a backend script uses CommonJS (require/module.exports/__dirname)
+ * rather than ES module syntax.
+ */
+export function isCommonJsServerCode(code: string): boolean {
+    const hasEsm = /^\s*import\s+[\s\S]*?\s+from\s+['"]|^\s*export\s+/m.test(code);
+    const hasCjs = /\brequire\s*\(|\bmodule\.exports\b|\b__dirname\b|\b__filename\b/.test(code);
+    return hasCjs && !hasEsm;
+}
+
+/**
+ * Normalizes backend server code for port 3001, Node 20 sqlite shimming, and CJS vs ESM
+ * execution compatibility under a `"type": "module"` Vite workspace.
+ */
+export function prepareBackendServerFiles(rawServerCode: string): {
+    isCjs: boolean;
+    files: Record<string, string>;
+} {
+    const portNormalized = rawServerCode
+        .replace(/const\s+PORT\s*=\s*process\.env\.PORT\s*\|\|\s*\d+/g, "const PORT = process.env.BACKEND_PORT || 3001")
+        .replace(/const\s+PORT\s*=\s*3000\b/g, "const PORT = 3001")
+        .replace(/app\.listen\(\s*3000\s*,/g, "app.listen(3001,");
+
+    const isCjs = isCommonJsServerCode(portNormalized);
+    const files: Record<string, string> = {};
+
+    if (isCjs) {
+        files["sqlite-shim.cjs"] = SQLITE_SHIM_CJS_CODE;
+        files["server.cjs"] = portNormalized.includes("node:sqlite")
+            ? portNormalized.replace(/['"]node:sqlite['"]/g, "'./sqlite-shim.cjs'")
+            : portNormalized;
+        files["server.js"] = portNormalized;
+    } else {
+        files["sqlite-shim.js"] = SQLITE_SHIM_CODE;
+        files["server.js"] = portNormalized.includes("node:sqlite")
+            ? portNormalized.replace(/['"]node:sqlite['"]/g, "'./sqlite-shim.js'")
+            : portNormalized;
+    }
+
+    return { isCjs, files };
+}
+
+export function buildBackendSupervisorCommand(baseDir = "/home/user/app"): string {
+    return `cd ${baseDir} && if [ -f server.cjs ]; then (nohup bash -c 'while true; do env PORT=3001 BACKEND_PORT=3001 node server.cjs >> /tmp/backend.log 2>&1; sleep 1; done' > /dev/null 2>&1 &); elif [ -f server.js ]; then (nohup bash -c 'while true; do env PORT=3001 BACKEND_PORT=3001 node server.js >> /tmp/backend.log 2>&1; sleep 1; done' > /dev/null 2>&1 &); fi`;
+}
+
+export function buildViteSupervisorCommand(baseDir = "/home/user/app"): string {
+    return `cd ${baseDir} && (nohup bash -c 'export NODE_OPTIONS="--max-old-space-size=384"; while true; do (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &)`;
+}
 
 /**
  * Writes virtual files to disk inside the sandbox and ensures standard configuration files
@@ -709,6 +1041,9 @@ export async function writeFilesToSandbox(
         if (cleanPath.endsWith(".jsx") || cleanPath.endsWith(".tsx") || cleanPath.endsWith(".js") || cleanPath.endsWith(".ts")) {
             // Clean up accidental LLM escape artifacts in JSX code (e.g. `\ />` or `\ >`)
             code = code.replace(/\\\s*(\/?>)/g, " $1");
+            if (cleanPath.startsWith("src/")) {
+                code = normalizeClientApiUrls(code);
+            }
         }
         normalizedFiles[cleanPath] = code;
     }
@@ -717,7 +1052,7 @@ export async function writeFilesToSandbox(
         // Strict de-duplication: Canonicalize App.jsx into src/App.jsx
         if (normalizedFiles["App.jsx"]) {
             if (!normalizedFiles["src/App.jsx"]) {
-                normalizedFiles["src/App.jsx"] = normalizedFiles["App.jsx"];
+                normalizedFiles["src/App.jsx"] = normalizeClientApiUrls(normalizedFiles["App.jsx"]);
             }
             delete normalizedFiles["App.jsx"];
         }
@@ -727,13 +1062,13 @@ export async function writeFilesToSandbox(
             if (path.startsWith("components/")) {
                 const newPath = "src/" + path;
                 if (!normalizedFiles[newPath]) {
-                    normalizedFiles[newPath] = normalizedFiles[path];
+                    normalizedFiles[newPath] = normalizeClientApiUrls(normalizedFiles[path]);
                 }
                 delete normalizedFiles[path];
             }
         }
 
-        // Strictly enforce allowedHosts: true, polling, and HMR in vite.config
+        // Strictly enforce allowedHosts: true, polling, database.json ignore, and HMR in vite.config
         let hasViteConfig = false;
         for (const [key, code] of Object.entries(normalizedFiles)) {
             if (key === "vite.config.js" || key === "vite.config.ts" || key === "vite.config.mjs") {
@@ -741,7 +1076,8 @@ export async function writeFilesToSandbox(
                 if (
                     !code.includes("allowedHosts: true") ||
                     !code.includes("usePolling") ||
-                    !code.includes("clientPort: 443")
+                    !code.includes("clientPort: 443") ||
+                    !code.includes("database.json")
                 ) {
                     normalizedFiles[key] = STANDARD_VITE_CONFIG;
                 }
@@ -814,21 +1150,33 @@ const rootElement = document.getElementById('root');
 if (rootElement) {
   ReactDOM.createRoot(rootElement).render(
     <StrictMode>
-      <App />
+      <ZephyreErrorBoundary>
+        <App />
+      </ZephyreErrorBoundary>
     </StrictMode>
   );
+  zephyreVerifyRenderedRoot(rootElement);
 }
 `.trim();
         delete normalizedFiles["main.jsx"];
 
+        // Prepare Express backend files (with automatic .cjs support if require() is used)
+        let isCjsBackend = false;
+        if (normalizedFiles["server.js"]) {
+            const prepared = prepareBackendServerFiles(normalizedFiles["server.js"]);
+            isCjsBackend = prepared.isCjs;
+            Object.assign(normalizedFiles, prepared.files);
+        }
+
         // Ensure package.json exists and is normalized
         const rawPkgCode = normalizedFiles["package.json"];
         const hasServerJs = Boolean(normalizedFiles["server.js"]);
+        const serverEntry = isCjsBackend ? "server.cjs" : "server.js";
         const backendDeps: Record<string, string> = hasServerJs
             ? { express: "^4.21.2", cors: "^2.8.5" }
             : {};
         const devScript = hasServerJs
-            ? "PORT=3001 node server.js & vite --host 0.0.0.0 --port 3000"
+            ? `PORT=3001 node ${serverEntry} & vite --host 0.0.0.0 --port 3000`
             : "vite --host 0.0.0.0 --port 3000";
 
         let packageJson: {
@@ -857,7 +1205,7 @@ if (rootElement) {
                 scripts: {
                     dev: devScript,
                     build: "vite build",
-                    start: "node server.js",
+                    start: `node ${serverEntry}`,
                 },
                 dependencies: {
                     react: "^19.0.0",
@@ -877,6 +1225,9 @@ if (rootElement) {
             packageJson.type = "module";
             packageJson.scripts = packageJson.scripts || {};
             packageJson.scripts.dev = devScript;
+            if (hasServerJs) {
+                packageJson.scripts.start = `node ${serverEntry}`;
+            }
             packageJson.dependencies = {
                 react: "^19.0.0",
                 "react-dom": "^19.0.0",
@@ -895,19 +1246,6 @@ if (rootElement) {
         }
 
         normalizedFiles["package.json"] = JSON.stringify(packageJson, null, 2);
-
-        // Provide sqlite-shim.js and sanitize node:sqlite imports for Node 20 runtime compatibility
-        if (normalizedFiles["server.js"]) {
-            normalizedFiles["sqlite-shim.js"] = SQLITE_SHIM_CODE;
-            if (normalizedFiles["server.js"].includes("node:sqlite")) {
-                normalizedFiles["server.js"] = normalizedFiles["server.js"].replace(/['"]node:sqlite['"]/g, "'./sqlite-shim.js'");
-            }
-            // Guarantee Express backend always listens on port 3001, never port 3000 (which belongs to Vite)
-            normalizedFiles["server.js"] = normalizedFiles["server.js"]
-                .replace(/const\s+PORT\s*=\s*process\.env\.PORT\s*\|\|\s*\d+/g, "const PORT = process.env.BACKEND_PORT || 3001")
-                .replace(/const\s+PORT\s*=\s*3000\b/g, "const PORT = 3001")
-                .replace(/app\.listen\(\s*3000\s*,/g, "app.listen(3001,");
-        }
     }
 
     // Ensure working directory exists and any standard directories
@@ -983,52 +1321,67 @@ export async function startSandboxApp(
             { background: true }
         );
     } else {
-        // Install dependencies with legacy peer deps and safe fallback
-        await sandbox.commands.run(
-            `cd ${baseDir} && (npm install --silent --no-audit --no-fund --legacy-peer-deps || npm install --silent --no-audit --no-fund --force || true)`,
+        // Install dependencies and surface real installation failures instead of failing silently
+        const installResult = await sandbox.commands.run(
+            `cd ${baseDir} && (npm install --no-audit --no-fund --legacy-peer-deps > /tmp/npm-install.log 2>&1 || npm install --no-audit --no-fund --force >> /tmp/npm-install.log 2>&1 || echo "NPM_INSTALL_FAILED")`,
             { timeoutMs: 120_000 }
         );
+        if (installResult.stdout.includes("NPM_INSTALL_FAILED")) {
+            const installLog = await sandbox.commands
+                .run("tail -n 30 /tmp/npm-install.log 2>&1 || true")
+                .catch(() => null);
+            const logSnippet = installLog?.stdout?.trim() || "";
+            console.error(`[E2B] npm install failed in ${baseDir}:`, logSnippet);
+            const hasViteBin = await sandbox.commands
+                .run(`test -x ${baseDir}/node_modules/.bin/vite && echo OK || true`)
+                .catch(() => null);
+            if (!hasViteBin?.stdout.includes("OK")) {
+                throw new Error(
+                    `Sandbox dependency installation failed: ${logSnippet.slice(-400) || "npm install exited with non-zero status"}`
+                );
+            }
+        }
         // Ensure both ports 3000 and 3001 are clean and dev server logs exist
         await sandbox.commands.run(
             `touch /tmp/dev-server.log /tmp/backend.log; (fuser -k 3000/tcp 2>/dev/null || true); (fuser -k 3001/tcp 2>/dev/null || true)`
         );
-        // Start Node/Express backend strictly on port 3001 with supervisor if server.js exists
-        await sandbox.commands.run(
-            `cd ${baseDir} && if [ -f server.js ]; then (nohup bash -c 'while true; do env PORT=3001 BACKEND_PORT=3001 node server.js >> /tmp/backend.log 2>&1; sleep 1; done' > /dev/null 2>&1 &); fi`
-        );
+        // Start Node/Express backend strictly on port 3001 with supervisor if server.cjs/server.js exists
+        await sandbox.commands.run(buildBackendSupervisorCommand(baseDir));
         // Start Vite dev server explicitly on port 3000 with local binary priority and supervisor
-        await sandbox.commands.run(
-            `cd ${baseDir} && (nohup bash -c 'export NODE_OPTIONS="--max-old-space-size=384"; while true; do (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &)`
-        );
+        await sandbox.commands.run(buildViteSupervisorCommand(baseDir));
     }
 
-    // Wait up to 30 seconds for dev server readiness and trigger warm-up prebundling
+    // Wait up to 30 seconds for dev server readiness and warm critical entrypoints & optimized deps
     let isReady = false;
     try {
         await sandbox.commands.run(
             `for i in $(seq 1 60); do
                 if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1 || curl -s -f http://localhost:3000/ > /dev/null 2>&1; then
+                    curl -s http://127.0.0.1:3000/@vite/client > /dev/null 2>&1 || true
                     curl -s http://127.0.0.1:3000/src/main.jsx > /dev/null 2>&1 || true
+                    curl -s http://127.0.0.1:3000/src/App.jsx > /dev/null 2>&1 || true
                     exit 0
                 fi
                 sleep 0.5
             done; exit 1`,
-            { timeoutMs: 32_000 }
+            { timeoutMs: 35_000 }
         );
         isReady = true;
     } catch {
         // Dev server startup check timed out; attempt quick kickstart
         console.warn("[E2B] Dev server initial warm-up notice, executing kickstart...");
         try {
-            await sandbox.commands.run(
-                `cd ${baseDir} && (nohup bash -c 'export NODE_OPTIONS="--max-old-space-size=384"; (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1' > /dev/null 2>&1 &)`
-            );
+            await sandbox.commands.run(buildViteSupervisorCommand(baseDir));
             await sandbox.commands.run(
                 `for i in $(seq 1 20); do
-                    if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1; then exit 0; fi
+                    if curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1; then
+                        curl -s http://127.0.0.1:3000/@vite/client > /dev/null 2>&1 || true
+                        curl -s http://127.0.0.1:3000/src/main.jsx > /dev/null 2>&1 || true
+                        exit 0
+                    fi
                     sleep 0.5
                 done; exit 1`,
-                { timeoutMs: 12_000 }
+                { timeoutMs: 14_000 }
             );
             isReady = true;
         } catch {

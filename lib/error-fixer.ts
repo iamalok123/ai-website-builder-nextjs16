@@ -161,9 +161,20 @@ export function findSuspiciousProjectFiles(
             continue;
         }
 
-        if ((lower.endsWith("/src/app.jsx") || lower.endsWith("/app.jsx")) && !code.trim()) {
-            issues.push({ path, reason: "Empty root App component", code });
-            continue;
+        if ((lower === "/src/app.jsx" || lower === "/app.jsx" || lower === "src/app.jsx" || lower === "app.jsx")) {
+            if (!code.trim()) {
+                issues.push({ path, reason: "Empty root App component", code });
+                continue;
+            }
+            // Catch truncated root App components that had braces auto-closed before any JSX return
+            if (!code.includes("<") && !code.includes("createElement")) {
+                issues.push({
+                    path,
+                    reason: "Root App component has no JSX return tree (renders blank preview)",
+                    code,
+                });
+                continue;
+            }
         }
 
         if ((/<!DOCTYPE\s+html/i.test(code) || /<html[\s>]/i.test(code)) && !/<\/html>/i.test(code)) {

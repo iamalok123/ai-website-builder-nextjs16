@@ -1,5 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { STANDARD_VITE_CONFIG, SQLITE_SHIM_CODE } from "@/lib/e2b";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import vm from "node:vm";
+import { createRequire } from "node:module";
+import {
+  STANDARD_VITE_CONFIG,
+  SQLITE_SHIM_CODE,
+  SQLITE_SHIM_CJS_CODE,
+  ZEPHYRE_HMR_REPORTER_CODE,
+  normalizeClientApiUrls,
+  prepareBackendServerFiles,
+} from "@/lib/e2b";
 
 function generateIndexHtml(title: string): string {
   return `
@@ -147,5 +159,96 @@ describe("E2B Scaffolding & Configuration Generator", () => {
     const sanitized = rawServerJs.replace(/['"]node:sqlite['"]/g, "'./sqlite-shim.js'");
     expect(sanitized).toContain("from './sqlite-shim.js'");
     expect(sanitized).not.toContain("node:sqlite");
+  });
+
+  it("should ignore backend database files in Vite watcher and keep cors enabled", () => {
+    expect(STANDARD_VITE_CONFIG).toContain("database.json");
+    expect(STANDARD_VITE_CONFIG).toContain("cors: true");
+  });
+
+  it("should rewrite hardcoded localhost:3001 URLs to relative /api proxy paths in client code", () => {
+    const rawClient = `const res = await fetch(\`http://localhost:3001/api/sheets?userId=\${id}\`);\nconst base = 'http://127.0.0.1:3001';`;
+    const normalized = normalizeClientApiUrls(rawClient);
+    expect(normalized).toContain("fetch(`/api/sheets?userId=${id}`)");
+    expect(normalized).toContain("const base = '';");
+  });
+
+  it("should emit CommonJS server.cjs + sqlite-shim.cjs when server.js uses require() under type: module", () => {
+    const cjsServer = `const express = require('express');\nconst { DatabaseSync } = require('node:sqlite');\nconst PORT = 3000;\napp.listen(3000, () => {});`;
+    const prepared = prepareBackendServerFiles(cjsServer);
+    expect(prepared.isCjs).toBe(true);
+    expect(prepared.files["server.cjs"]).toContain("./sqlite-shim.cjs");
+    expect(prepared.files["server.cjs"]).toContain("const PORT = 3001;");
+    expect(prepared.files["sqlite-shim.cjs"]).toContain("module.exports = { DatabaseSync }");
+
+    const esmServer = `import express from 'express';\nconst app = express();\napp.listen(3001);`;
+    const preparedEsm = prepareBackendServerFiles(esmServer);
+    expect(preparedEsm.isCjs).toBe(false);
+    expect(preparedEsm.files["server.js"]).toBeDefined();
+    expect(preparedEsm.files["server.cjs"]).toBeUndefined();
+  });
+
+  it("should verify rendered root DOM and include ErrorBoundary in ZEPHYRE_HMR_REPORTER_CODE", () => {
+    expect(ZEPHYRE_HMR_REPORTER_CODE).toContain("ZephyreErrorBoundary");
+    expect(ZEPHYRE_HMR_REPORTER_CODE).toContain("zephyreVerifyRenderedRoot");
+  });
+
+  it("should execute SQLite shim queries with non-id WHERE, ORDER BY, LIMIT/OFFSET, COUNT(*), UPDATE, and DELETE", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "zephyre-sqlite-test-"));
+    const dbPath = path.join(tmpDir, "test.sqlite");
+    const cjsModule: { exports: { DatabaseSync?: new (file: string) => {
+      exec: (sql: string) => void;
+      prepare: (sql: string) => {
+        run: (...args: unknown[]) => { lastInsertRowid?: number; changes: number };
+        get: (...args: unknown[]) => Record<string, unknown> | null;
+        all: (...args: unknown[]) => Record<string, unknown>[];
+      };
+    } } } = { exports: {} };
+
+    try {
+      const fn = new vm.Script(SQLITE_SHIM_CJS_CODE);
+      const localRequire = createRequire(import.meta.url);
+      const wrapper = `(function(exports, require, module) {\n${SQLITE_SHIM_CJS_CODE}\n})`;
+      const compiled = vm.runInThisContext(wrapper) as (
+        exp: typeof cjsModule.exports,
+        req: typeof localRequire,
+        mod: typeof cjsModule
+      ) => void;
+      expect(fn).toBeDefined();
+      compiled(cjsModule.exports, localRequire, cjsModule);
+
+      const DatabaseSync = cjsModule.exports.DatabaseSync!;
+      const db = new DatabaseSync(dbPath);
+      db.exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT, role TEXT, score INTEGER)");
+
+      const insert = db.prepare("INSERT INTO users (email, role, score) VALUES (?, ?, ?)");
+      insert.run("alice@example.com", "admin", 50);
+      insert.run("bob@example.com", "member", 80);
+      insert.run("carol@example.com", "admin", 95);
+
+      const alice = db.prepare("SELECT * FROM users WHERE email = ?").get("alice@example.com");
+      expect(alice?.email).toBe("alice@example.com");
+
+      const admins = db.prepare("SELECT * FROM users WHERE role = 'admin' AND score = ?").all(95);
+      expect(admins).toHaveLength(1);
+      expect(admins[0].email).toBe("carol@example.com");
+
+      const topSecond = db.prepare("SELECT * FROM users ORDER BY score DESC LIMIT 1 OFFSET 1").all();
+      expect(topSecond).toHaveLength(1);
+      expect(topSecond[0].email).toBe("bob@example.com");
+
+      const countRow = db.prepare("SELECT COUNT(*) AS total FROM users WHERE role = ?").get("admin");
+      expect(countRow?.total).toBe(2);
+
+      const upd = db.prepare("UPDATE users SET score = ? WHERE email = ?").run(100, "alice@example.com");
+      expect(upd.changes).toBe(1);
+      expect(db.prepare("SELECT * FROM users WHERE email = ?").get("alice@example.com")?.score).toBe(100);
+
+      const del = db.prepare("DELETE FROM users WHERE email = ?").run("bob@example.com");
+      expect(del.changes).toBe(1);
+      expect(db.prepare("SELECT COUNT(*) AS total FROM users").get()?.total).toBe(2);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

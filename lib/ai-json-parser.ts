@@ -295,6 +295,113 @@ export interface FileSyntaxError {
 }
 
 /**
+ * Shallow-walks statements inside a function body (without descending into nested
+ * functions/callbacks such as useState/useEffect) to verify whether the component
+ * itself contains at least one non-empty return statement.
+ */
+function hasDirectNonEmptyReturn(node: unknown): boolean {
+    if (!node || typeof node !== "object") return false;
+    const obj = node as Record<string, unknown>;
+    const type = obj.type as string | undefined;
+    if (!type) return false;
+
+    // Do not cross into nested callbacks or inner helper functions
+    if (
+        type === "FunctionDeclaration" ||
+        type === "FunctionExpression" ||
+        type === "ArrowFunctionExpression" ||
+        type === "ClassDeclaration" ||
+        type === "ClassExpression"
+    ) {
+        return false;
+    }
+
+    if (type === "ReturnStatement") {
+        const arg = obj.argument as Record<string, unknown> | null | undefined;
+        if (!arg) return false;
+        if (arg.type === "Identifier" && arg.name === "undefined") return false;
+        if (arg.type === "NullLiteral") return false;
+        return true;
+    }
+
+    for (const [key, val] of Object.entries(obj)) {
+        if (key === "type" || key === "loc" || key === "start" || key === "end" || key === "extra") continue;
+        if (Array.isArray(val)) {
+            for (const item of val) {
+                if (hasDirectNonEmptyReturn(item)) return true;
+            }
+        } else if (val && typeof val === "object") {
+            if (hasDirectNonEmptyReturn(val)) return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Verifies that the default-exported root React App component actually returns
+ * renderable UI (catching cases where LLM truncation + brace closing leaves an empty function body).
+ */
+function checkRootAppCompleteness(
+    ast: ReturnType<typeof babelParser.parse>,
+    path: string,
+    code: string
+): FileSyntaxError | null {
+    const body = ast.program?.body ?? [];
+    const expDefault = body.find((n) => n.type === "ExportDefaultDeclaration");
+    if (!expDefault || expDefault.type !== "ExportDefaultDeclaration") {
+        return { path, message: "Root App component is missing a default export" };
+    }
+
+    let targetDecl: Record<string, unknown> | null = expDefault.declaration as unknown as Record<string, unknown>;
+    if (targetDecl?.type === "Identifier") {
+        const targetName = targetDecl.name as string;
+        for (const stmt of body) {
+            if (stmt.type === "FunctionDeclaration" && stmt.id?.name === targetName) {
+                targetDecl = stmt as unknown as Record<string, unknown>;
+                break;
+            }
+            if (stmt.type === "VariableDeclaration") {
+                const match = stmt.declarations.find(
+                    (d) => d.id.type === "Identifier" && d.id.name === targetName && d.init
+                );
+                if (match?.init) {
+                    targetDecl = match.init as unknown as Record<string, unknown>;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (
+        targetDecl &&
+        (targetDecl.type === "FunctionDeclaration" ||
+            targetDecl.type === "FunctionExpression" ||
+            targetDecl.type === "ArrowFunctionExpression")
+    ) {
+        const fnBody = targetDecl.body as Record<string, unknown> | undefined;
+        if (fnBody?.type === "BlockStatement") {
+            const stmts = (fnBody.body as unknown[]) || [];
+            const hasReturn = stmts.some((stmt) => hasDirectNonEmptyReturn(stmt));
+            if (!hasReturn) {
+                return {
+                    path,
+                    message: "Root App component has no return statement (truncated before JSX return tree)",
+                };
+            }
+        }
+    }
+
+    if (!code.includes("<") && !code.includes("createElement")) {
+        return {
+            path,
+            message: "Root App component contains no JSX or React element rendering",
+        };
+    }
+
+    return null;
+}
+
+/**
  * Checks whether a JavaScript/JSX/TypeScript snippet parses cleanly using Babel's parser
  * (matching Vite's @vitejs/plugin-react AST parser).
  */
@@ -348,18 +455,25 @@ export function validateProjectSyntax(
             lower.endsWith(".ts") ||
             lower.endsWith(".tsx")
         ) {
-            if ((lower.endsWith("/src/app.jsx") || lower.endsWith("/app.jsx")) && !code.trim()) {
+            const isRootApp =
+                lower === "/src/app.jsx" ||
+                lower === "/app.jsx" ||
+                lower === "/src/app.tsx" ||
+                lower === "/app.tsx";
+
+            if (isRootApp && !code.trim()) {
                 errors.push({ path, message: "Empty application entry file" });
                 continue;
             }
 
+            let parsedAst: ReturnType<typeof babelParser.parse>;
             try {
                 const plugins: babelParser.ParserPlugin[] = lower.endsWith(".tsx")
                     ? ["typescript", "jsx"]
                     : lower.endsWith(".ts")
                     ? ["typescript"]
                     : ["jsx"];
-                babelParser.parse(code, { sourceType: "unambiguous", plugins });
+                parsedAst = babelParser.parse(code, { sourceType: "unambiguous", plugins });
             } catch (err: unknown) {
                 const bErr = err as { message?: string; loc?: { line?: number; column?: number } };
                 errors.push({
@@ -369,6 +483,14 @@ export function validateProjectSyntax(
                     column: bErr?.loc?.column,
                 });
                 continue;
+            }
+
+            if (isRootApp) {
+                const rootIssue = checkRootAppCompleteness(parsedAst, path, code);
+                if (rootIssue) {
+                    errors.push(rootIssue);
+                    continue;
+                }
             }
 
             // Catch truncated HTML template literals embedded inside JS helpers (e.g., buildPreviewDocument)
@@ -629,6 +751,52 @@ function extractPartialLlmResponse(raw: string): ParsedLlmResponse | null {
 }
 
 /**
+ * Scores a recovered ParsedLlmResponse by recovered file count and Babel AST validity
+ * so clipped jsonrepair attempts never preempt a fuller structural extraction.
+ */
+function scoreParsedResponse(parsed: ParsedLlmResponse | null): number {
+    if (!parsed?.files) return 0;
+    const entries = Object.entries(parsed.files);
+    if (entries.length === 0) return 0;
+
+    let score = entries.length * 100;
+    for (const [fPath, fileObj] of entries) {
+        const code = fileObj?.code;
+        if (typeof code !== "string" || !code.trim()) continue;
+        const lower = fPath.toLowerCase();
+        if (
+            lower.endsWith(".js") ||
+            lower.endsWith(".jsx") ||
+            lower.endsWith(".ts") ||
+            lower.endsWith(".tsx")
+        ) {
+            if (isJsSyntaxValid(code, fPath)) score += 60;
+            if (fPath === "/src/App.jsx") score += 40;
+        } else {
+            score += 20;
+        }
+        score += Math.min(20, Math.floor(code.length / 250));
+    }
+    return score;
+}
+
+function tryJsonRepairParse(input: string): ParsedLlmResponse | null {
+    try {
+        const repaired = jsonrepair(input);
+        const parsed = JSON.parse(repaired);
+        if (parsed && typeof parsed === "object" && parsed.files) {
+            return {
+                ...parsed,
+                files: normalizeFileChanges(parsed.files),
+            };
+        }
+    } catch {
+        // Fallback to alternative recovery strategy
+    }
+    return null;
+}
+
+/**
  * Robust LLM JSON Parser that guarantees valid output across all token-length and streaming edge cases.
  */
 export function parseLlmJson(raw: string): ParsedLlmResponse {
@@ -661,33 +829,14 @@ export function parseLlmJson(raw: string): ParsedLlmResponse {
         }
     } catch {}
 
-    // Attempt 2: jsonrepair on candidate
-    try {
-        const repaired = jsonrepair(candidate);
-        const parsed = JSON.parse(repaired);
-        if (parsed && typeof parsed === "object" && parsed.files) {
-            return {
-                ...parsed,
-                files: normalizeFileChanges(parsed.files),
-            };
-        }
-    } catch {}
-
-    // Attempt 3: Sanitize control characters (except tab, newline, carriage return) + jsonrepair
+    // When strict JSON fails, compare jsonrepair attempts against structural boundary
+    // extraction and choose whichever recovers more complete, AST-valid files.
     const sanitized = candidate.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, "");
-    try {
-        const repaired = jsonrepair(sanitized);
-        const parsed = JSON.parse(repaired);
-        if (parsed && typeof parsed === "object" && parsed.files) {
-            return {
-                ...parsed,
-                files: normalizeFileChanges(parsed.files),
-            };
-        }
-    } catch {}
+    const rawSanitized = clean.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, "");
 
-    // Attempt 4: Auto-close truncated string or object
-    const autoClosedAttempts = [
+    const repairCandidates = [
+        candidate,
+        sanitized,
         sanitized + '"}',
         sanitized + '"} }',
         sanitized + '"}} }',
@@ -696,27 +845,27 @@ export function parseLlmJson(raw: string): ParsedLlmResponse {
         sanitized + '"\n}\n}',
         sanitized + '"\n}\n}\n}',
     ];
-    for (const attempt of autoClosedAttempts) {
-        try {
-            const repaired = jsonrepair(attempt);
-            const parsed = JSON.parse(repaired);
-            if (parsed && typeof parsed === "object" && parsed.files) {
-                return {
-                    ...parsed,
-                    files: normalizeFileChanges(parsed.files),
-                };
-            }
-        } catch {}
+
+    let bestRepair: ParsedLlmResponse | null = null;
+    for (const attempt of repairCandidates) {
+        const res = tryJsonRepairParse(attempt);
+        if (res && (!bestRepair || scoreParsedResponse(res) > scoreParsedResponse(bestRepair))) {
+            bestRepair = res;
+        }
     }
 
-    // Attempt 5: Structural boundary extractor (handles unescaped inner double-quotes & partial streams)
-    const partial = extractPartialLlmResponse(clean.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, ""));
-    if (partial) {
-        return partial;
+    const partial = extractPartialLlmResponse(rawSanitized);
+
+    if (bestRepair && partial) {
+        // Give jsonrepair a slight tie-breaker (+5) since it preserves dependencies/metadata
+        return scoreParsedResponse(bestRepair) + 5 >= scoreParsedResponse(partial)
+            ? bestRepair
+            : partial;
     }
+    if (bestRepair) return bestRepair;
+    if (partial) return partial;
 
     // Final attempt: jsonrepair on full sanitized raw string
-    const rawSanitized = clean.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, "");
     const finalRepaired = jsonrepair(rawSanitized);
     const finalParsed = JSON.parse(finalRepaired);
     return {

@@ -19,6 +19,8 @@ const aj = arcjet({
     ],
 });
 
+let hasWarnedMissingArcjetKey = false;
+
 export default clerkMiddleware(async (auth, req) => {
     // Allow external cron pings to health check without Arcjet bot blocking
     if (req.nextUrl.pathname.startsWith("/api/health")) {
@@ -28,8 +30,17 @@ export default clerkMiddleware(async (auth, req) => {
     if (process.env.ARCJET_KEY) {
         const decision = await aj.protect(req);
         if (decision.isDenied()) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+            if (req.nextUrl.pathname.startsWith("/api")) {
+                return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+            }
+            return new NextResponse(
+                "<!doctype html><html><body style='background:#09090b;color:#f4f4f5;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0'><div style='text-align:center;padding:24px'><h2>Access Denied (403)</h2><p style='color:#a1a1aa'>Request blocked by security policy.</p></div></body></html>",
+                { status: 403, headers: { "content-type": "text/html; charset=utf-8" } }
+            );
         }
+    } else if (process.env.NODE_ENV === "production" && !hasWarnedMissingArcjetKey) {
+        hasWarnedMissingArcjetKey = true;
+        console.warn("[Security] ARCJET_KEY is not configured in production; global bot/shield protection is inactive.");
     }
 
     // Clerk auth guard — redirect unauthenticated users away from /workspace and /projects

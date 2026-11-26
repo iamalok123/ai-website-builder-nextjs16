@@ -4,7 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 import { db } from "@/lib/prisma";
 import { CREDIT_COST_PER_GENERATION } from "@/lib/constants";
 import type { Message, FileData } from "@/types/workspace";
-import { aj } from "@/lib/arcjet";
+import { aj, warnIfArcjetUnconfigured } from "@/lib/arcjet";
 import { revalidatePath } from "next/cache";
 import { parseLlmJson, ensureStandardFiles, applyFileChanges, validateProjectSyntax, type ParsedLlmResponse } from "@/lib/ai-json-parser";
 import { DIAGNOSTIC_FIX_SYSTEM_PROMPT, getSystemPrompt, synthesizeDomainBlueprint, buildSyntaxRepairPrompt } from "@/lib/ai-prompts";
@@ -70,6 +70,43 @@ function trimHistory(messages: Message[]): Message[] {
 
 // Prompt helpers & domain blueprints now live in @/lib/ai-prompts
 
+const MAX_EXTERNAL_ASSET_BYTES = 10 * 1024 * 1024; // 10MB cap for fetched design images/PDFs
+
+async function fetchSafeExternalBinary(
+    rawUrl: string,
+    fallbackMime: string
+): Promise<{ base64: string; mimeType: string } | null> {
+    if (!isSafeExternalUrl(rawUrl)) {
+        console.warn("[Security SSRF Block] Blocked untrusted URL:", rawUrl);
+        return null;
+    }
+
+    const res = await fetch(rawUrl, {
+        signal: AbortSignal.timeout(5000),
+        redirect: "manual",
+    });
+
+    // Reject 3xx redirects rather than following into potentially private/metadata hosts
+    if (!res.ok) return null;
+
+    const declaredLength = Number(res.headers.get("content-length") || "0");
+    if (declaredLength > MAX_EXTERNAL_ASSET_BYTES) {
+        console.warn("[Security] Skipped oversized external attachment:", rawUrl);
+        return null;
+    }
+
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength > MAX_EXTERNAL_ASSET_BYTES) {
+        console.warn("[Security] Skipped oversized external attachment body:", rawUrl);
+        return null;
+    }
+
+    return {
+        base64: Buffer.from(buf).toString("base64"),
+        mimeType: res.headers.get("content-type") || fallbackMime,
+    };
+}
+
 // ─── Gemini contents builder ──────────────────────────────────────────────────
 
 async function buildContents(messages: Message[], fileData: FileData | null) {
@@ -94,19 +131,14 @@ async function buildContents(messages: Message[], fileData: FileData | null) {
                             let mimeType = file.type || (isPdf ? "application/pdf" : "image/png");
 
                             if (!base64Data && file.url) {
-                                if (isSafeExternalUrl(file.url)) {
-                                    try {
-                                        const res = await fetch(file.url, { signal: AbortSignal.timeout(5000) });
-                                        if (res.ok) {
-                                            const buf = await res.arrayBuffer();
-                                            base64Data = Buffer.from(buf).toString("base64");
-                                            mimeType = res.headers.get("content-type") || mimeType;
-                                        }
-                                    } catch (err) {
-                                        console.error("Failed to fetch attached binary file:", err);
+                                try {
+                                    const fetched = await fetchSafeExternalBinary(file.url, mimeType);
+                                    if (fetched) {
+                                        base64Data = fetched.base64;
+                                        mimeType = fetched.mimeType;
                                     }
-                                } else {
-                                    console.warn("[Security SSRF Block] Blocked untrusted URL in file attachment:", file.url);
+                                } catch (err) {
+                                    console.error("Failed to fetch attached binary file:", err);
                                 }
                             }
 
@@ -132,29 +164,23 @@ async function buildContents(messages: Message[], fileData: FileData | null) {
                     }
                 } else if (msg.imageUrl) {
                     text = `[The user has attached an image. Use this URL directly in the generated app where relevant (as img src, background-image, etc.): ${msg.imageUrl}]\n\n${text}`;
-                    if (isSafeExternalUrl(msg.imageUrl)) {
-                        try {
-                            const imgRes = await fetch(msg.imageUrl, { signal: AbortSignal.timeout(5000) });
-                            if (imgRes.ok) {
-                                const arrayBuffer = await imgRes.arrayBuffer();
-                                const base64Data = Buffer.from(arrayBuffer).toString("base64");
-                                const mimeType = imgRes.headers.get("content-type") || "image/jpeg";
-                                parts.push({
-                                    inlineData: {
-                                        data: base64Data,
-                                        mimeType,
-                                    },
-                                });
-                            }
-                        } catch (error) {
-                            console.error("Failed to fetch image for Gemini:", error);
+                    try {
+                        const fetched = await fetchSafeExternalBinary(msg.imageUrl, "image/jpeg");
+                        if (fetched) {
+                            parts.push({
+                                inlineData: {
+                                    data: fetched.base64,
+                                    mimeType: fetched.mimeType,
+                                },
+                            });
                         }
-                    } else {
-                        console.warn("[Security SSRF Block] Blocked untrusted URL in msg.imageUrl:", msg.imageUrl);
+                    } catch (error) {
+                        console.error("Failed to fetch image for Gemini:", error);
                     }
                 }
 
                 const isLast = idx === trimmed.length - 1;
+                const brokenPaths = new Set<string>();
                 if (!isLast && isDiagnosticPrompt(msg.content)) {
                     const summary = extractDiagnosticSummary(msg.content);
                     text = `[Previous Auto-Fix Diagnostic Request: ${summary.title} — ${summary.message}]`;
@@ -176,7 +202,8 @@ async function buildContents(messages: Message[], fileData: FileData | null) {
                             text += `\n\n=== SERVER COMPILER AST AUDIT (FIX ALL LISTED FILES) ===\n${summaryList}\n`;
                             for (const err of serverAuditErrors) {
                                 const brokenCode = fileData.files[err.path]?.code;
-                                if (typeof brokenCode === "string" && !text.includes(`--- ${err.path} ---`)) {
+                                if (typeof brokenCode === "string" && !brokenPaths.has(err.path)) {
+                                    brokenPaths.add(err.path);
                                     text += `\n--- ${err.path} (AST Error: ${err.message}) ---\n\`\`\`\n${brokenCode}\n\`\`\`\n`;
                                 }
                             }
@@ -184,12 +211,28 @@ async function buildContents(messages: Message[], fileData: FileData | null) {
                     }
 
                     if (fileData && fileData.files) {
-                        const fileEntries = Object.entries(fileData.files);
+                        const fileEntries = Object.entries(fileData.files).filter(
+                            ([fPath]) => !(fPath === "/App.jsx" && Boolean(fileData.files["/src/App.jsx"]))
+                        );
                         const outline = fileEntries
                             .map(([fPath, fObj]) => `- ${fPath} (${(fObj?.code || "").split("\n").length} lines)`)
                             .join("\n");
 
-                        text += `\n\n=== EXISTING PROJECT CONTEXT ===\nProject Title: ${fileData.title || "Zephyre App"}\nProject Files Overview:\n${outline}\n\nCurrent Full Codebase:\n${JSON.stringify(fileData, null, 2)}`;
+                        // Avoid duplicating broken files already printed verbatim in the AST audit block
+                        const compactFiles: Record<string, { code: string }> = {};
+                        for (const [fPath, fObj] of fileEntries) {
+                            compactFiles[fPath] = brokenPaths.has(fPath)
+                                ? { code: "[omitted — full contents included in AST Audit section above]" }
+                                : { code: fObj?.code || "" };
+                        }
+
+                        const compactContext = {
+                            title: fileData.title || "Zephyre App",
+                            dependencies: fileData.dependencies || {},
+                            files: compactFiles,
+                        };
+
+                        text += `\n\n=== EXISTING PROJECT CONTEXT ===\nProject Title: ${compactContext.title}\nProject Files Overview:\n${outline}\n\nCurrent Full Codebase (compact JSON):\n${JSON.stringify(compactContext)}`;
                     }
                 }
 
@@ -224,6 +267,9 @@ export async function POST(req: NextRequest) {
     if (!messages?.length) {
         return Response.json({ message: "No messages provided" }, { status: 400 });
     }
+    if (!userId || typeof userId !== "string") {
+        return Response.json({ message: "Invalid user ID" }, { status: 400 });
+    }
 
 
 
@@ -237,6 +283,7 @@ export async function POST(req: NextRequest) {
     });
 
     const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+    warnIfArcjetUnconfigured("api/gen-ai-code");
     if (process.env.ARCJET_KEY) {
         const decision = await aj.protect(arcjetReq, {
             requested: 1,
@@ -265,6 +312,16 @@ export async function POST(req: NextRequest) {
         return Response.json({ message: "User not found" }, { status: 404 });
     if (user.credits < CREDIT_COST_PER_GENERATION) {
         return Response.json({ message: "Insufficient credits" }, { status: 402 });
+    }
+
+    if (workspaceId) {
+        const existingWorkspace = await db.workspace.findUnique({
+            where: { id_userId: { id: workspaceId, userId } },
+            select: { id: true },
+        });
+        if (!existingWorkspace) {
+            return Response.json({ message: "Workspace not found" }, { status: 404 });
+        }
     }
 
 
@@ -495,14 +552,19 @@ export async function POST(req: NextRequest) {
                     finalWorkspaceId = workspace.id;
                 } catch (dbErr) {
                     console.error("[gen-ai-code] Primary transaction error, running safe fallback save:", dbErr);
+                    let fallbackSaved = false;
                     if (workspaceId) {
-                        await db.workspace.update({
+                        const updated = await db.workspace.update({
                             where: { id_userId: { id: workspaceId, userId } },
                             data: {
                                 messages: updatedMessages as never,
                                 fileData: newFileData as never,
                             },
-                        }).catch((e) => console.error("Workspace update fallback failed:", e));
+                        }).catch((e) => {
+                            console.error("Workspace update fallback failed:", e);
+                            return null;
+                        });
+                        if (updated) fallbackSaved = true;
                     } else {
                         const created = await db.workspace.create({
                             data: {
@@ -511,8 +573,26 @@ export async function POST(req: NextRequest) {
                                 messages: updatedMessages as never,
                                 fileData: newFileData as never,
                             },
-                        }).catch((e) => console.error("Workspace create fallback failed:", e));
-                        if (created) finalWorkspaceId = created.id;
+                        }).catch((e) => {
+                            console.error("Workspace create fallback failed:", e);
+                            return null;
+                        });
+                        if (created) {
+                            finalWorkspaceId = created.id;
+                            fallbackSaved = true;
+                        }
+                    }
+
+                    if (fallbackSaved) {
+                        await db.user.updateMany({
+                            where: {
+                                id: userId,
+                                credits: { gte: CREDIT_COST_PER_GENERATION },
+                            },
+                            data: {
+                                credits: { decrement: CREDIT_COST_PER_GENERATION },
+                            },
+                        }).catch((e) => console.error("Credit deduction fallback failed:", e));
                     }
                 }
 

@@ -7,20 +7,48 @@ const envContent = fs.readFileSync(envPath, "utf8");
 const dbUrlMatch = envContent.match(/DATABASE_URL=["']?([^"'\r\n]+)["']?/);
 const connectionString = dbUrlMatch[1];
 
+const ERROR_BRIDGE_SCRIPT = `<script id="zephyre-error-bridge">
+(function() {
+  function safePost(payload) {
+    try { window.parent.postMessage(payload, '*'); } catch (e) {}
+  }
+  window.addEventListener('error', function(event) {
+    var msg = event && event.message ? event.message : 'Uncaught script error';
+    safePost({
+      source: 'zephyre-preview-error',
+      message: msg,
+      filename: event && event.filename ? event.filename : undefined,
+      lineno: event && event.lineno ? event.lineno : undefined,
+      colno: event && event.colno ? event.colno : undefined,
+    });
+  }, true);
+  window.addEventListener('unhandledrejection', function(event) {
+    var reason = event && event.reason;
+    var msg = reason && reason.message ? reason.message : String(reason || 'Unhandled promise rejection');
+    safePost({ source: 'zephyre-preview-error', message: 'Unhandled Promise Rejection: ' + msg });
+  });
+})();
+</script>`;
+
 function migrateWorkspaceFiles(files, title) {
     const updated = { ...files };
 
-    // 1. Ensure App.jsx exists
-    if (!updated["/App.jsx"] && updated["/App.js"]) {
-        updated["/App.jsx"] = { code: updated["/App.js"].code };
+    // 1. Canonicalize entry point to /src/App.jsx
+    if (!updated["/src/App.jsx"]) {
+        if (updated["/App.jsx"]) {
+            updated["/src/App.jsx"] = { code: updated["/App.jsx"].code };
+        } else if (updated["/App.js"]) {
+            updated["/src/App.jsx"] = { code: updated["/App.js"].code };
+        }
     }
-    updated["/App.js"] = { code: `import App from "./App.jsx";\nexport default App;\n` };
+    delete updated["/App.jsx"];
+    delete updated["/App.js"];
 
     // 2. Remove legacy CRA-specific files
     delete updated["/public/index.html"];
     delete updated["public/index.html"];
 
-    // 3. Ensure root /index.html exists for Vite
+    // 3. Ensure root /index.html exists for Vite with Error Bridge attached
     updated["/index.html"] = {
         code: `<!DOCTYPE html>
 <html lang="en">
@@ -29,6 +57,7 @@ function migrateWorkspaceFiles(files, title) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${title || "Zephyre App"}</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    ${ERROR_BRIDGE_SCRIPT}
   </head>
   <body class="bg-black text-white">
     <div id="root"></div>
@@ -63,7 +92,7 @@ if (rootElement) {
 }`
     };
 
-    // 5. Ensure /vite.config.js exists with allowedHosts, polling, and HMR
+    // 5. Ensure /vite.config.js matches STANDARD_VITE_CONFIG (/api proxy, cors, ignored db artifacts)
     updated["/vite.config.js"] = {
         code: `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -74,10 +103,19 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 3000,
     strictPort: true,
+    cors: true,
     allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
     watch: {
       usePolling: true,
       interval: 100,
+      ignored: ['**/database.json', '**/database.sqlite*', '**/*.log'],
     },
     hmr: {
       clientPort: 443,

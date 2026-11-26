@@ -91,6 +91,38 @@ export function isAllowedE2bProxyHost(hostname: string): boolean {
 }
 
 /**
+ * Verifies whether a postMessage event origin comes from the same app origin
+ * (e.g. /api/sandbox/proxy) or a trusted E2B sandbox preview domain.
+ */
+export function isTrustedPreviewOrigin(origin: string, appOrigin?: string): boolean {
+    if (!origin || typeof origin !== "string" || origin === "null") return false;
+    if (appOrigin && origin === appOrigin) return true;
+
+    let parsed: URL;
+    try {
+        parsed = new URL(origin);
+    } catch {
+        return false;
+    }
+
+    if (parsed.protocol !== "https:" && (process.env.NODE_ENV === "production" || parsed.protocol !== "http:")) {
+        return false;
+    }
+
+    return isAllowedE2bProxyHost(parsed.hostname);
+}
+
+/**
+ * Extracts the E2B sandbox ID from a preview subdomain such as `3000-<sandboxId>.e2b.app`.
+ */
+export function extractE2bSandboxIdFromHost(hostname: string): string | null {
+    if (!hostname || typeof hostname !== "string") return null;
+    const cleanHost = hostname.toLowerCase().trim();
+    const match = cleanHost.match(/^(?:\d+-)?([a-z0-9_]+)\.e2b\.(?:app|dev)$/);
+    return match?.[1] ?? null;
+}
+
+/**
  * Sanitizes a file path intended for container writing:
  * - Prevents directory traversal (../)
  * - Blocks null bytes and shell control characters

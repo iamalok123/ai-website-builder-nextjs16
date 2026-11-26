@@ -4,17 +4,47 @@ import {
     createE2bSandbox,
     connectE2bSandbox,
     killE2bSandbox,
+    verifySandboxOwnership,
     writeFilesToSandbox,
     startSandboxApp,
-    ensureSandboxSwap,
     E2B_SANDBOX_TIMEOUT_MS,
     STANDARD_VITE_CONFIG,
-    SQLITE_SHIM_CODE,
+    normalizeClientApiUrls,
+    prepareBackendServerFiles,
+    buildBackendSupervisorCommand,
+    buildViteSupervisorCommand,
 } from "@/lib/e2b";
 import { sanitizeSandboxPath } from "@/lib/security";
 import type { FileData } from "@/types/workspace";
 
 export const dynamic = "force-dynamic";
+
+async function ensureOwnedSandbox(
+    sandboxId: string,
+    ownerId: string,
+    expiredMessage = "Sandbox is not running or has expired. Please re-boot."
+): Promise<{ expired: boolean; errorResponse?: NextResponse }> {
+    const access = await verifySandboxOwnership(sandboxId, ownerId);
+    if (access === "forbidden") {
+        return {
+            expired: false,
+            errorResponse: NextResponse.json(
+                { error: "Forbidden: you do not own this sandbox" },
+                { status: 403 }
+            ),
+        };
+    }
+    if (access === "not_found") {
+        return {
+            expired: true,
+            errorResponse: NextResponse.json(
+                { error: expiredMessage, code: "SANDBOX_EXPIRED" },
+                { status: 404 }
+            ),
+        };
+    }
+    return { expired: false };
+}
 
 export async function POST(req: NextRequest) {
     const { userId } = await auth();
@@ -40,18 +70,24 @@ export async function POST(req: NextRequest) {
                 );
             }
 
-            // Clean up previous sandbox if provided to prevent lingering containers
+            // Clean up previous sandbox only if owned by the requesting user
             const oldId = previousSandboxId || sandboxId;
             if (oldId) {
-                try {
-                    await killE2bSandbox(oldId);
-                } catch {
-                    // Silently proceed if prior sandbox already expired or was deleted
+                const access = await ensureOwnedSandbox(oldId, userId);
+                if (!access.expired && access.errorResponse) {
+                    return access.errorResponse;
+                }
+                if (!access.expired) {
+                    try {
+                        await killE2bSandbox(oldId);
+                    } catch {
+                        // Silently proceed if prior sandbox already expired or was deleted
+                    }
                 }
             }
 
-            // Create new microVM sandbox with explicit public network access
-            const sandbox = await createE2bSandbox();
+            // Create new microVM sandbox bound to the requesting user
+            const sandbox = await createE2bSandbox(E2B_SANDBOX_TIMEOUT_MS, userId);
             
             // Write project files to the container filesystem
             const { stack } = await writeFilesToSandbox(sandbox, fileData);
@@ -59,14 +95,25 @@ export async function POST(req: NextRequest) {
             // Start dev server and get exposed public URL
             const { previewUrl, trafficAccessToken, isPublic } = await startSandboxApp(sandbox, stack);
 
-            return NextResponse.json({
+            const response = NextResponse.json({
                 success: true,
                 sandboxId: sandbox.sandboxId,
                 previewUrl,
-                trafficAccessToken,
                 isPublic,
                 stack,
             });
+
+            if (!isPublic && trafficAccessToken) {
+                response.cookies.set(`zephyre_e2b_${sandbox.sandboxId}`, trafficAccessToken, {
+                    httpOnly: true,
+                    sameSite: "lax",
+                    secure: process.env.NODE_ENV === "production",
+                    path: "/api/sandbox/proxy",
+                    maxAge: 3600,
+                });
+            }
+
+            return response;
         }
 
         if (action === "sync") {
@@ -77,6 +124,11 @@ export async function POST(req: NextRequest) {
             const filesToSync = changedFiles || fileData?.files;
             if (!filesToSync || Object.keys(filesToSync).length === 0) {
                 return NextResponse.json({ success: true, message: "Nothing to sync" });
+            }
+
+            const ownership = await ensureOwnedSandbox(sandboxId, userId);
+            if (ownership.errorResponse) {
+                return ownership.errorResponse;
             }
 
             let sandbox;
@@ -99,46 +151,41 @@ export async function POST(req: NextRequest) {
             const normalizedSync: Record<string, string> = {};
             let hasPackageJsonChange = false;
             let hasServerJsChange = false;
+            let serverIsCjs = false;
 
             for (const [rawPath, fileObj] of Object.entries(filesToSync)) {
-                const cleanPath = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
+                let cleanPath = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
+                if (cleanPath === "App.jsx" || cleanPath === "App.js") cleanPath = "src/App.jsx";
+                else if (cleanPath.startsWith("components/")) cleanPath = `src/${cleanPath}`;
+
                 let codeToWrite = fileObj?.code ?? "";
                 if (cleanPath.endsWith(".jsx") || cleanPath.endsWith(".tsx") || cleanPath.endsWith(".js") || cleanPath.endsWith(".ts")) {
                     codeToWrite = codeToWrite.replace(/\\\s*(\/?>)/g, " $1");
+                    if (cleanPath.startsWith("src/")) {
+                        codeToWrite = normalizeClientApiUrls(codeToWrite);
+                    }
                 }
 
                 if (cleanPath.startsWith("vite.config")) {
                     if (
                         !codeToWrite.includes("allowedHosts: true") ||
-                        !codeToWrite.includes("usePolling")
+                        !codeToWrite.includes("usePolling") ||
+                        !codeToWrite.includes("database.json")
                     ) {
                         codeToWrite = STANDARD_VITE_CONFIG;
                     }
                 }
 
-                normalizedSync[cleanPath] = codeToWrite;
-
-                if (cleanPath === "App.jsx" || cleanPath === "src/App.jsx") {
-                    normalizedSync["App.jsx"] = codeToWrite;
-                    normalizedSync["src/App.jsx"] = codeToWrite;
-                } else if (cleanPath.startsWith("components/")) {
-                    normalizedSync[`src/${cleanPath}`] = codeToWrite;
-                } else if (cleanPath.startsWith("src/components/")) {
-                    normalizedSync[cleanPath.replace(/^src\//, "")] = codeToWrite;
-                } else if (cleanPath === "package.json") {
-                    hasPackageJsonChange = true;
-                } else if (cleanPath === "server.js") {
+                if (cleanPath === "server.js") {
                     hasServerJsChange = true;
-                    if (codeToWrite.includes("node:sqlite")) {
-                        codeToWrite = codeToWrite.replace(/['"]node:sqlite['"]/g, "'./sqlite-shim.js'");
+                    const prepared = prepareBackendServerFiles(codeToWrite);
+                    serverIsCjs = prepared.isCjs;
+                    Object.assign(normalizedSync, prepared.files);
+                } else {
+                    if (cleanPath === "package.json") {
+                        hasPackageJsonChange = true;
                     }
-                    // Guarantee server.js always listens on port 3001
-                    codeToWrite = codeToWrite
-                        .replace(/const\s+PORT\s*=\s*process\.env\.PORT\s*\|\|\s*\d+/g, "const PORT = process.env.BACKEND_PORT || 3001")
-                        .replace(/const\s+PORT\s*=\s*3000\b/g, "const PORT = 3001")
-                        .replace(/app\.listen\(\s*3000\s*,/g, "app.listen(3001,");
-                    normalizedSync["server.js"] = codeToWrite;
-                    normalizedSync["sqlite-shim.js"] = SQLITE_SHIM_CODE;
+                    normalizedSync[cleanPath] = codeToWrite;
                 }
             }
 
@@ -176,8 +223,9 @@ export async function POST(req: NextRequest) {
             }
 
             if (hasServerJsChange) {
+                const cleanupStaleCjs = serverIsCjs ? "" : `rm -f ${baseDir}/server.cjs; `;
                 sandbox.commands.run(
-                    `cd ${baseDir} && (fuser -k 3001/tcp 2>/dev/null || true); if [ -f server.js ]; then (nohup bash -c 'while true; do env PORT=3001 BACKEND_PORT=3001 node server.js >> /tmp/backend.log 2>&1; sleep 1; done' > /dev/null 2>&1 &); fi`,
+                    `(fuser -k 3001/tcp 2>/dev/null || true); ${cleanupStaleCjs}${buildBackendSupervisorCommand(baseDir)}`,
                     { background: true }
                 ).catch((err) => console.warn("[E2B Sandbox Sync] Backend restart warning:", err));
             }
@@ -187,7 +235,7 @@ export async function POST(req: NextRequest) {
                 `if ! curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1; then
                     (fuser -k 3000/tcp 2>/dev/null || true);
                     touch /tmp/dev-server.log;
-                    cd ${baseDir} && (nohup bash -c 'export NODE_OPTIONS="--max-old-space-size=384"; while true; do (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &);
+                    ${buildViteSupervisorCommand(baseDir)}
                 fi`,
                 { background: true }
             ).catch(() => {});
@@ -200,12 +248,21 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: "sandboxId is required" }, { status: 400 });
             }
 
+            const ownership = await ensureOwnedSandbox(
+                sandboxId,
+                userId,
+                "Sandbox is not running or has expired."
+            );
+            if (ownership.errorResponse) {
+                return ownership.errorResponse;
+            }
+
             let sandbox;
             try {
                 sandbox = await connectE2bSandbox(sandboxId);
                 // Extend sandbox lifetime
                 await sandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS).catch(() => {});
-            } catch (connErr: unknown) {
+            } catch {
                 return NextResponse.json(
                     { error: "Sandbox is not running or has expired.", code: "SANDBOX_EXPIRED" },
                     { status: 404 }
@@ -219,7 +276,7 @@ export async function POST(req: NextRequest) {
                     `if ! curl -s -f http://127.0.0.1:3000/ > /dev/null 2>&1; then
                         (fuser -k 3000/tcp 2>/dev/null || true);
                         touch /tmp/dev-server.log;
-                        cd ${baseDir} && (nohup bash -c 'export NODE_OPTIONS="--max-old-space-size=384"; while true; do (./node_modules/.bin/vite --host 0.0.0.0 --port 3000 || npx --yes vite --host 0.0.0.0 --port 3000) >> /tmp/dev-server.log 2>&1; sleep 1; done' > /dev/null 2>&1 &);
+                        ${buildViteSupervisorCommand(baseDir)}
                         echo "restarted";
                     else
                         echo "alive";
@@ -242,7 +299,13 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: "sandboxId is required to stop" }, { status: 400 });
             }
 
-            await killE2bSandbox(sandboxId);
+            const ownership = await ensureOwnedSandbox(sandboxId, userId);
+            if (!ownership.expired && ownership.errorResponse) {
+                return ownership.errorResponse;
+            }
+            if (!ownership.expired) {
+                await killE2bSandbox(sandboxId);
+            }
             return NextResponse.json({ success: true, stopped: true });
         }
 

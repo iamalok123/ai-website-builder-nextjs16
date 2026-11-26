@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import dynamic from "next/dynamic";
 import {
     Eye,
     Code2,
@@ -27,15 +28,60 @@ import {
 } from "lucide-react";
 import { RingLoader } from "react-spinners";
 import { OrbitalRingLoader } from "@/components/OrbitalRingLoader";
-import JSZip from "jszip";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { FileData, StatusStep } from "@/types/workspace";
-import { CodeMirrorEditor } from "@/components/editor/CodeMirrorEditor";
 import { FolderIcon, getFileIcon } from "@/components/ui/file-icons";
 import { ErrorInfo, parseRawError, buildErrorFixPrompt, formatErrorFixDisplay } from "@/lib/error-fixer";
+import { isTrustedPreviewOrigin } from "@/lib/security";
+
+const CodeMirrorEditor = dynamic(
+    () => import("@/components/editor/CodeMirrorEditor").then((mod) => mod.CodeMirrorEditor),
+    {
+        ssr: false,
+        loading: () => (
+            <div className="flex flex-1 items-center justify-center bg-[#060608] text-xs font-mono text-zinc-500">
+                Loading code editor…
+            </div>
+        ),
+    }
+);
+
+function getSandboxStorageKey(workspaceId: string): string {
+    return `zephyre_sandbox_${workspaceId}`;
+}
+
+function readSandboxSession(workspaceId: string | null | undefined): { sandboxId: string; previewUrl: string } | null {
+    if (!workspaceId || typeof window === "undefined") return null;
+    try {
+        const raw = sessionStorage.getItem(getSandboxStorageKey(workspaceId));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { sandboxId?: unknown; previewUrl?: unknown };
+        if (typeof parsed.sandboxId === "string" && typeof parsed.previewUrl === "string") {
+            return { sandboxId: parsed.sandboxId, previewUrl: parsed.previewUrl };
+        }
+    } catch {}
+    return null;
+}
+
+function persistSandboxSession(workspaceId: string | null | undefined, sandboxId: string, previewUrl: string): void {
+    if (!workspaceId || typeof window === "undefined") return;
+    try {
+        sessionStorage.setItem(
+            getSandboxStorageKey(workspaceId),
+            JSON.stringify({ sandboxId, previewUrl })
+        );
+    } catch {}
+}
+
+function clearSandboxSession(workspaceId: string | null | undefined): void {
+    if (!workspaceId || typeof window === "undefined") return;
+    try {
+        sessionStorage.removeItem(getSandboxStorageKey(workspaceId));
+    } catch {}
+}
 
 // Types
 type ActiveTab = "preview" | "code";
@@ -49,12 +95,13 @@ interface FileTreeNode {
 }
 
 interface CodePanelProps {
+    workspaceId?: string | null;
     fileData: FileData | null;
     isGenerating: boolean;
     statusLog: StatusStep[];
     onImprove: (userRequest: string) => Promise<void>;
     onFixError: (error: string, displayMessage?: string) => Promise<void>;
-    onFilePatch: (patches: FileData) => void;
+    onFilePatch: (patches: FileData, options?: { replaceFiles?: boolean }) => void;
     appTitle: string | null;
     isImproving: boolean;
     isProUser: boolean;
@@ -202,6 +249,7 @@ function FileTreeNodeItem({
 }
 
 export function CodePanel({
+    workspaceId,
     fileData,
     isGenerating,
     statusLog,
@@ -259,12 +307,25 @@ export function CodePanel({
     useEffect(() => {
         sandboxIdRef.current = sandboxId;
     }, [sandboxId]);
+    const workspaceIdRef = useRef<string | null | undefined>(workspaceId);
+    useEffect(() => {
+        workspaceIdRef.current = workspaceId;
+    }, [workspaceId]);
+    useEffect(() => {
+        if (workspaceId && sandboxId && previewUrl) {
+            persistSandboxSession(workspaceId, sandboxId, previewUrl);
+        }
+    }, [workspaceId, sandboxId, previewUrl]);
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const startSandboxRef = useRef<(data: FileData, prevId?: string | null) => Promise<void>>(() => Promise.resolve());
 
     // Listen for live compile & runtime error events and inspector selections
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
+            const iframeWin = iframeRef.current?.contentWindow;
+            if (!iframeWin || event.source !== iframeWin) return;
+            const appOrigin = typeof window !== "undefined" ? window.location.origin : "";
+            if (!isTrustedPreviewOrigin(event.origin, appOrigin)) return;
             if (!event.data || typeof event.data !== "object") return;
             if (event.data.source === "zephyre-preview-error") {
                 const parsed = parseRawError(event.data);
@@ -308,10 +369,16 @@ export function CodePanel({
         setIsInspectorActive((prev) => {
             const next = !prev;
             try {
+                let targetOrigin = "*";
+                if (previewUrlRef.current?.startsWith("http")) {
+                    targetOrigin = new URL(previewUrlRef.current).origin;
+                } else if (typeof window !== "undefined") {
+                    targetOrigin = window.location.origin;
+                }
                 iframeRef.current?.contentWindow?.postMessage({
                     type: "zephyre-toggle-inspector",
                     enabled: next,
-                }, "*");
+                }, targetOrigin);
             } catch {}
             if (next) {
                 toast.info("Click any element in the preview to target it in your prompt");
@@ -388,43 +455,8 @@ export function CodePanel({
         );
     }, [fileList, files, selectedFile]);
 
-    // Auto-patch legacy vite.config to enforce allowedHosts: true, polling, and HMR for Vite 6 preview
-    useEffect(() => {
-        if (!fileData || !fileData.files) return;
-        const viteKey = Object.keys(fileData.files).find((k) => k.endsWith("vite.config.js") || k.endsWith("vite.config.ts"));
-        const currentCode = viteKey ? fileData.files[viteKey]?.code : null;
-        const needsPatch = !currentCode || !currentCode.includes("allowedHosts: true") || !currentCode.includes("usePolling");
-
-        if (needsPatch) {
-            const patchedViteConfig = `import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    host: '0.0.0.0',
-    port: 3000,
-    strictPort: true,
-    allowedHosts: true,
-    watch: {
-      usePolling: true,
-      interval: 100,
-    },
-    hmr: {
-      clientPort: 443,
-    },
-  },
-});`;
-            const keyToPatch = viteKey || "/vite.config.js";
-            onFilePatch({
-                ...fileData,
-                files: {
-                    ...fileData.files,
-                    [keyToPatch]: { code: patchedViteConfig },
-                },
-            });
-        }
-    }, [fileData, onFilePatch]);
+    // Container writes ensure normalized vite.config.js on boot; avoid client-side auto-patching on mount
+    // which would trigger phantom manual-edit DB saves and unnecessary Vite restarts.
 
     // ─── E2B Sandbox Lifecycle: Start or Sync ─────────────────────────────────────
     const isStartingRef = useRef(false);
@@ -468,13 +500,12 @@ export default defineConfig({
 
             setSandboxId(result.sandboxId);
 
-            // If private traffic token exists, use reverse-proxy endpoint to ensure seamless iframe embedding
-            if (!result.isPublic && result.trafficAccessToken) {
-                const proxyUrl = `/api/sandbox/proxy?url=${encodeURIComponent(result.previewUrl)}&token=${encodeURIComponent(result.trafficAccessToken)}`;
-                setPreviewUrl(proxyUrl);
-            } else {
-                setPreviewUrl(result.previewUrl);
-            }
+            // Private sandboxes rely on an HttpOnly cookie set by /api/sandbox; never put tokens in query strings
+            const nextPreviewUrl = !result.isPublic
+                ? `/api/sandbox/proxy?url=${encodeURIComponent(result.previewUrl)}`
+                : result.previewUrl;
+            setPreviewUrl(nextPreviewUrl);
+            persistSandboxSession(workspaceIdRef.current, result.sandboxId, nextPreviewUrl);
         } catch (err: unknown) {
             console.error("[CodePanel] Failed to start E2B Sandbox:", err);
             const msg = err instanceof Error ? err.message : "Failed to start sandbox";
@@ -501,14 +532,16 @@ export default defineConfig({
                 }),
             });
             if (!res.ok) {
-                if (res.status === 404) {
+                if (res.status === 404 || res.status === 403) {
                     console.warn("[CodePanel] Sandbox expired or unreachable, resetting for automatic re-boot...");
+                    clearSandboxSession(workspaceIdRef.current);
                     setSandboxId(null);
                     return;
                 }
                 try {
                     const errData = await res.json();
                     if (errData?.code === "SANDBOX_EXPIRED") {
+                        clearSandboxSession(workspaceIdRef.current);
                         setSandboxId(null);
                     }
                 } catch {}
@@ -536,13 +569,65 @@ export default defineConfig({
 
     // Track file contents to detect both structural and content modifications from AI generations
     const prevFilesRef = useRef<Record<string, { code: string }>>({});
+    const restoringSandboxRef = useRef(false);
+    const attemptedRestoreWorkspaceRef = useRef<string | null>(null);
+    const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const pendingDirtyFilesRef = useRef<Record<string, { code: string }>>({});
+
+    // Clear stale manual edit debounce queue whenever AI generation/improve begins
     useEffect(() => {
-        if (isGenerating || !fileData || !fileData.files || Object.keys(fileData.files).length === 0) {
+        if (isGenerating || isImproving) {
+            if (debounceTimerRef.current) {
+                clearTimeout(debounceTimerRef.current);
+                debounceTimerRef.current = null;
+            }
+            pendingDirtyFilesRef.current = {};
+            queueMicrotask(() => {
+                setIsSyncing(false);
+            });
+        }
+    }, [isGenerating, isImproving]);
+
+    useEffect(() => {
+        if (isGenerating || isImproving || !fileData || !fileData.files || Object.keys(fileData.files).length === 0) {
             return;
         }
 
         const currentFiles = fileData.files;
         if (!sandboxId) {
+            if (restoringSandboxRef.current) return;
+
+            const cached = workspaceId ? readSandboxSession(workspaceId) : null;
+            if (workspaceId && cached && attemptedRestoreWorkspaceRef.current !== workspaceId) {
+                attemptedRestoreWorkspaceRef.current = workspaceId;
+                restoringSandboxRef.current = true;
+                (async () => {
+                    try {
+                        const res = await fetch("/api/sandbox", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: "health", sandboxId: cached.sandboxId }),
+                        });
+                        if (res.ok) {
+                            const healthData = await res.json();
+                            if (healthData?.healthy !== false) {
+                                await syncSandboxFiles(cached.sandboxId, currentFiles);
+                                prevFilesRef.current = currentFiles;
+                                setSandboxId(cached.sandboxId);
+                                setPreviewUrl(cached.previewUrl || healthData.previewUrl);
+                                return;
+                            }
+                        }
+                    } catch {}
+                    clearSandboxSession(workspaceId);
+                    prevFilesRef.current = currentFiles;
+                    await startSandbox(fileData);
+                })().finally(() => {
+                    restoringSandboxRef.current = false;
+                });
+                return;
+            }
+
             prevFilesRef.current = currentFiles;
             queueMicrotask(() => {
                 startSandbox(fileData);
@@ -564,11 +649,11 @@ export default defineConfig({
                 syncSandboxFiles(sandboxId, changedFiles);
             });
         }
-    }, [fileData, isGenerating, sandboxId, startSandbox, syncSandboxFiles]);
+    }, [fileData, isGenerating, isImproving, sandboxId, workspaceId, startSandbox, syncSandboxFiles]);
 
     // Self-healing preview watchdog: verifies container and dev-server health
     useEffect(() => {
-        if (!sandboxId || !previewUrl || isGenerating || isStartingSandbox) return;
+        if (!sandboxId || !previewUrl || isGenerating || isImproving || isStartingSandbox) return;
 
         let isCancelled = false;
         const checkHealth = async () => {
@@ -582,8 +667,9 @@ export default defineConfig({
                 if (isCancelled) return;
 
                 if (!res.ok) {
-                    if (res.status === 404) {
+                    if (res.status === 404 || res.status === 403) {
                         console.warn("[CodePanel] Sandbox expired during health check, reviving...");
+                        clearSandboxSession(workspaceIdRef.current);
                         if (fileDataRef.current) {
                             startSandboxRef.current(fileDataRef.current, null);
                         }
@@ -591,6 +677,7 @@ export default defineConfig({
                         try {
                             const errData = await res.json();
                             if (errData?.code === "SANDBOX_EXPIRED" && fileDataRef.current) {
+                                clearSandboxSession(workspaceIdRef.current);
                                 startSandboxRef.current(fileDataRef.current, null);
                             }
                         } catch {}
@@ -609,16 +696,30 @@ export default defineConfig({
             } catch {}
         };
 
-        // Dual-pass health check (3s and 10s) to auto-heal cold boots and transient 502s
+        // Dual-pass boot health check (3s and 10s), periodic 4-min keepalive to prevent 15-min E2B idle pause,
+        // and visibility-return health verification
         const timer1 = setTimeout(checkHealth, 3000);
         const timer2 = setTimeout(checkHealth, 10000);
+        const keepaliveInterval = setInterval(() => {
+            if (typeof document === "undefined" || document.visibilityState === "visible") {
+                checkHealth();
+            }
+        }, 4 * 60 * 1000);
+        const handleVisibilityChange = () => {
+            if (typeof document !== "undefined" && document.visibilityState === "visible") {
+                checkHealth();
+            }
+        };
+        document.addEventListener("visibilitychange", handleVisibilityChange);
 
         return () => {
             isCancelled = true;
             clearTimeout(timer1);
             clearTimeout(timer2);
+            clearInterval(keepaliveInterval);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
         };
-    }, [sandboxId, previewUrl, isGenerating, isStartingSandbox]);
+    }, [sandboxId, previewUrl, isGenerating, isImproving, isStartingSandbox]);
 
     // Resolve code of selected file with leading-slash tolerance
     const selectedCode = useMemo(() => {
@@ -627,8 +728,6 @@ export default defineConfig({
         if (!activeFile.startsWith("/") && files["/" + activeFile]) return files["/" + activeFile].code;
         return "";
     }, [files, activeFile]);
-
-    const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     // Cleanup debounce timer on unmount
     useEffect(() => {
@@ -641,7 +740,7 @@ export default defineConfig({
 
     // Handle manual code edits with debounced container sync
     const handleCodeChange = (newCode: string) => {
-        if (!fileData || !activeFile) return;
+        if (!fileData || !activeFile || isGenerating || isImproving) return;
 
         let targetKey = activeFile;
         if (!files[targetKey]) {
@@ -663,14 +762,18 @@ export default defineConfig({
             if (updatedFiles["src/App.jsx"]) updatedFiles["src/App.jsx"] = { code: newCode };
         }
 
-        onFilePatch({
-            files: updatedFiles,
-            dependencies: fileData.dependencies ?? {},
-            title: fileData.title,
-        });
+        onFilePatch(
+            {
+                files: updatedFiles,
+                dependencies: fileData.dependencies ?? {},
+                title: fileData.title,
+            },
+            { replaceFiles: true }
+        );
 
         // Update local tracking ref so generation effect doesn't duplicate the sync
         prevFilesRef.current = updatedFiles;
+        pendingDirtyFilesRef.current[targetKey] = { code: newCode };
 
         setIsSyncing(true);
         if (debounceTimerRef.current) {
@@ -679,8 +782,12 @@ export default defineConfig({
 
         if (sandboxId) {
             debounceTimerRef.current = setTimeout(async () => {
+                const dirty = { ...pendingDirtyFilesRef.current };
+                pendingDirtyFilesRef.current = {};
                 try {
-                    await syncSandboxFiles(sandboxId, { [targetKey]: { code: newCode } });
+                    if (Object.keys(dirty).length > 0) {
+                        await syncSandboxFiles(sandboxId, dirty);
+                    }
                 } finally {
                     setIsSyncing(false);
                 }
@@ -690,7 +797,7 @@ export default defineConfig({
         }
     };
 
-    // Instant tab switch with immediate debounce flush
+    // Instant tab switch with immediate debounce flush (only if edits are actually pending)
     const handleTabChange = (val: string) => {
         if (val === "preview") {
             if (debounceTimerRef.current) {
@@ -698,16 +805,10 @@ export default defineConfig({
                 debounceTimerRef.current = null;
             }
             setIsSyncing(false);
-            if (sandboxId && activeFile) {
-                let targetKey = activeFile;
-                if (!files[targetKey]) {
-                    if (targetKey.startsWith("/") && files[targetKey.slice(1)]) targetKey = targetKey.slice(1);
-                    else if (!targetKey.startsWith("/") && files["/" + targetKey]) targetKey = "/" + targetKey;
-                }
-                const fileObj = files[targetKey] || (selectedCode ? { code: selectedCode } : null);
-                if (fileObj) {
-                    syncSandboxFiles(sandboxId, { [targetKey]: fileObj });
-                }
+            const dirty = pendingDirtyFilesRef.current;
+            if (sandboxId && Object.keys(dirty).length > 0) {
+                pendingDirtyFilesRef.current = {};
+                syncSandboxFiles(sandboxId, dirty);
             }
         }
         setActiveTab(val as ActiveTab);
@@ -745,6 +846,7 @@ export default defineConfig({
         setIsExporting(true);
 
         try {
+            const { default: JSZip } = await import("jszip");
             const zip = new JSZip();
             for (const [path, fileObj] of Object.entries(fileData.files)) {
                 const cleanPath = path.startsWith("/") ? path.slice(1) : path;
@@ -977,12 +1079,16 @@ export default defineConfig({
                                 />
 
                                 {/* Non-destructive Generation / Booting Overlay */}
-                                {(isGenerating || isStartingSandbox) && (
+                                {(isGenerating || isImproving || isStartingSandbox) && (
                                     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black/85 backdrop-blur-xs p-6 text-center animate-in fade-in duration-200">
                                         <RingLoader color="#f97316" size={54} />
                                         <div className="max-w-xs space-y-1">
                                             <p className="text-sm font-semibold text-white">
-                                                {isGenerating ? "Updating Application…" : "Booting sandbox…"}
+                                                {isGenerating
+                                                    ? "Updating Application…"
+                                                    : isImproving
+                                                    ? "Applying AI Improvements…"
+                                                    : "Booting sandbox…"}
                                             </p>
                                             <p className="text-xs text-zinc-400">
                                                 {statusLog[statusLog.length - 1]?.label || "Applying changes and synchronizing sandbox…"}
@@ -1210,8 +1316,8 @@ export default defineConfig({
                             value={selectedCode}
                             filePath={activeFile}
                             onChange={handleCodeChange}
-                            readOnly={isGenerating}
-                            isSyncing={isSyncing}
+                            readOnly={isGenerating || isImproving}
+                            isSyncing={isSyncing && !isGenerating && !isImproving}
                             getFileIcon={getFileIcon}
                         />
 

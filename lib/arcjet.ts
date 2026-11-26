@@ -4,10 +4,28 @@ import arcjet, {
     sensitiveInfo,
 } from "@arcjet/next";
 
-// Route-level Arcjet client for /api/gen-ai-code only.
+// Note: Route-level Arcjet client for /api/gen-ai-code and /api/improve.
 // shield + detectBot handled globally in proxy.ts,
 // Characteristics: "userId" means each Clerk user gets their own token bucket,
 // so corporate offices / VPNs sharing an IP don't share rate limits.
+
+const warnedContexts = new Set<string>();
+
+/**
+ * Emits a once-per-context warning in production when ARCJET_KEY is missing,
+ * so silent protection bypasses are visible in server logs.
+ */
+export function warnIfArcjetUnconfigured(context: string): void {
+    if (process.env.ARCJET_KEY || process.env.NODE_ENV !== "production") {
+        return;
+    }
+    if (!warnedContexts.has(context)) {
+        warnedContexts.add(context);
+        console.warn(
+            `[Arcjet] ARCJET_KEY is unset in production (${context}); rate limiting and prompt injection protection are bypassed.`
+        );
+    }
+}
 
 export const aj = arcjet({
     key: process.env.ARCJET_KEY || "ajkey_placeholder",
